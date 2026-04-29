@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/python_project/**)",
+      "Bash(python -c \":*)",
+      "Bash(python3 -c \":*)",
+      "Bash(pip install:*)",
+      "Bash(where python:*)",
+      "Bash(/c/Users/류동형/AppData/Local/Programs/Python/Python311/python.exe -c \":*)",
+      "Bash(/c/Users/류동형/AppData/Local/Programs/Python/Python311/python.exe -m pip install xlrd -q)",
+      "Bash(npm run:*)",
+      "Bash(python3)",
+      "Bash(python -c ':*)",
+      "Bash(cp -r \"Maintenance Data Dashboard_V4/dist\" \"MDD_SQLite_Deploy/dist\")",
+      "Bash(cp -r \"Maintenance Data Dashboard_V4/LNG\" \"MDD_SQLite_Deploy/LNG\")",
+      "Bash(cp -r \"Maintenance Data Dashboard_V4/STEAM\" \"MDD_SQLite_Deploy/STEAM\")",
+      "Bash(cp -r \"Maintenance Data Dashboard_V4/ARGON\" \"MDD_SQLite_Deploy/ARGON\")",
+      "Bash(cp -r \"Maintenance Data Dashboard_V4/NItrogen\" \"MDD_SQLite_Deploy/NItrogen\")",
+      "Bash(gh auth *)",
+      "Bash(git --version)",
+      "Bash(where git *)",
+      "Bash(winget install *)",
+      "PowerShell(gh --version)",
+      "PowerShell($env:PATH = [System.Environment]::GetEnvironmentVariable\\(\"PATH\",\"Machine\"\\) + \";\" + [System.Environment]::GetEnvironmentVariable\\(\"PATH\",\"User\"\\); gh --version)"
+    ]
+  }
+}

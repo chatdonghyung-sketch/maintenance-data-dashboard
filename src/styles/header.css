@@ -1,0 +1,90 @@
+:root {
+  --bg:#060c1a; --bg2:#0b1628; --bg3:#0e1e35; --bg4:#0a1525;
+  --br:#1a3050; --br2:#122540;
+  --bl:#1e6fff; --cy:#00d4ff; --gr:#00e5a0; --ye:#ffc107; --rd:#ff4757; --or:#ff6b35; --pu:#7c3aed;
+  --t1:#e8f4ff; --t2:#7a9bbf; --t3:#3a5470;
+  --fd:'Rajdhani',sans-serif; --fb:'Noto Sans KR',sans-serif; --fm:'Share Tech Mono',monospace;
+}
+
+.hdr {
+  position: fixed; top: 0; left: 0; right: 0; height: 54px;
+  background: rgba(6,12,26,.96);
+  border-bottom: 1px solid var(--br);
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 20px;
+  z-index: 2000;
+  backdrop-filter: blur(14px);
+}
+.hdr-l { display: flex; align-items: center; gap: 14px; }
+.hdr-r { display: flex; align-items: center; gap: 14px; }
+
+/* 로고 */
+.logo { display: flex; align-items: center; gap: 9px; }
+.logo-ic {
+  width: 30px; height: 30px;
+  background: linear-gradient(135deg, var(--bl), var(--cy));
+  border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--fd); font-weight: 700; font-size: 13px; color: #fff;
+  box-shadow: 0 0 18px #1e6fff44;
+}
+.logo-tx { font-family: var(--fd); font-size: 17px; font-weight: 700; letter-spacing: 2px; color: #fff; }
+.logo-sb { font-size: 9px; color: var(--t2); letter-spacing: 1px; }
+
+/* 팀 탭 */
+.team-tab {
+  padding: 3px 10px; border-radius: 4px; font-size: 11px;
+  cursor: pointer; border: 1px solid var(--br);
+  background: transparent; color: var(--t3);
+  transition: all .2s; font-family: var(--fb); white-space: nowrap;
+}
+.team-tab:hover { border-color: var(--bl); color: var(--t2); }
+.team-tab-ac {
+  background: rgba(30,111,255,.18); border-color: var(--bl);
+  color: var(--cy); font-weight: 600;
+}
+
+/* 우측 시계 / 상태점 / 유저 */
+.clk { font-family: var(--fm); font-size: 13px; color: var(--cy); }
+.sdot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--gr); box-shadow: 0 0 8px var(--gr);
+  animation: pg 2s infinite;
+}
+.uwr { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--t2); }
+.uav {
+  width: 26px; height: 26px; border-radius: 50%;
+  background: linear-gradient(135deg, #1e3a5f, #2563eb);
+  border: 1px solid var(--bl);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 700; color: #fff;
+}
+
+/* 상태점 애니메이션 */
+@keyframes pg {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(0,229,160,.4) }
+  50%       { box-shadow: 0 0 0 4px rgba(0,229,160,0) }
+}
+
+/* 토스트 알림 */
+.toast-box {
+  position: fixed;
+  top: 80px;
+  right: 20px;
+  background: rgba(11,22,40,.98);
+  border: 1px solid var(--ye);
+  border-radius: 8px;
+  padding: 12px 20px;
+  color: var(--t1);
+  font-size: 13px;
+  font-family: var(--fb);
+  box-shadow: 0 4px 24px rgba(0,0,0,.3);
+  z-index: 3000;
+  opacity: 0;
+  transform: translateX(400px);
+  transition: all .3s ease;
+}
+.toast-box.show {
+  opacity: 1;
+  transform: translateX(0);
+}
