@@ -1,291 +1,247 @@
-import { useState } from 'react';
-import { Activity, Thermometer, Gauge, Droplet, Zap, Wind, AlertTriangle, TrendingUp, RefreshCw } from 'lucide-react';
-import { LineChart, Line, ResponsiveContainer, Tooltip, CartesianGrid, XAxis, YAxis, ReferenceLine, AreaChart, Area } from 'recharts';
-import { HMITrendChart } from './HMITrendChart';
+import { useMemo, useState } from 'react';
+import {
+  Activity, AlertTriangle, Gauge, RefreshCw, Search, Thermometer,
+  TrendingUp, Wind, Zap,
+} from 'lucide-react';
+import {
+  Area, AreaChart, CartesianGrid, Line, LineChart, ReferenceLine,
+  ResponsiveContainer, Tooltip, XAxis, YAxis,
+} from 'recharts';
 
 const statusCfg = {
-  normal:  { text: 'text-[#00ff88]', bg: 'bg-[#00ff88]/10', border: 'border-[#00ff88]/30', dot: 'bg-[#00ff88]', label: '정상' },
-  warning: { text: 'text-[#ffa500]', bg: 'bg-[#ffa500]/10', border: 'border-[#ffa500]/30', dot: 'bg-[#ffa500]', label: '주의' },
-  danger:  { text: 'text-[#ff4444]', bg: 'bg-[#ff4444]/10', border: 'border-[#ff4444]/30', dot: 'bg-[#ff4444] animate-pulse', label: '위험' },
+  normal: { label: '정상', color: '#00ff88', bg: 'bg-[#00ff88]/10', border: 'border-[#00ff88]/35', dot: 'bg-[#00ff88]' },
+  warning: { label: '주의', color: '#ffa500', bg: 'bg-[#ffa500]/10', border: 'border-[#ffa500]/35', dot: 'bg-[#ffa500]' },
+  danger: { label: '위험', color: '#ff4444', bg: 'bg-[#ff4444]/10', border: 'border-[#ff4444]/35', dot: 'bg-[#ff4444] animate-pulse' },
 };
 
-const anomalies = [
-  { id: 'PCW-P1-T1', name: 'PCW 공급온도 - P1', type: '급격 상승', value: 29.5, unit: '°C',    limit: 28,  color: '#ff4444' },
-  { id: 'ICW-P2-F1', name: 'ICW 유량 - P2',     type: '상한 초과', value: 815,  unit: 'm³/h', limit: 800, color: '#ffa500' },
-  { id: 'PCW-P3-P1', name: 'PCW 압력 - P3',     type: '하한 미달', value: 2.8,  unit: 'bar',  limit: 3.0, color: '#ffa500' },
+const fdcData = [
+  { id: 'FDC-CH-01', equipment: '냉동기 #1', group: '냉동기', status: 'normal', tag: 'CHW_SUP_TEMP', value: 6.5, unit: '°C', limitLow: 5.0, limitHigh: 8.0, pressure: 4.2, flow: 850, power: 125.3, updated: '방금 전', trend: [6.4, 6.5, 6.5, 6.6, 6.5, 6.4, 6.5] },
+  { id: 'FDC-CH-03', equipment: '냉동기 #3', group: '냉동기', status: 'warning', tag: 'CHW_SUP_TEMP', value: 8.2, unit: '°C', limitLow: 5.0, limitHigh: 8.0, pressure: 3.9, flow: 780, power: 135.6, updated: '1초 전', trend: [6.5, 6.8, 7.2, 7.6, 7.9, 8.1, 8.2] },
+  { id: 'FDC-AHU-01', equipment: '공조기 #1', group: '공조기', status: 'normal', tag: 'ROOM_TEMP', value: 22.5, unit: '°C', limitLow: 21.0, limitHigh: 24.0, pressure: 150, flow: 15000, power: 45.2, updated: '방금 전', trend: [22.2, 22.4, 22.5, 22.6, 22.5, 22.4, 22.5] },
+  { id: 'FDC-CMP-01', equipment: 'Compressor #1', group: 'Compressor', status: 'normal', tag: 'DISCH_PRESS', value: 7.1, unit: 'bar', limitLow: 6.5, limitHigh: 8.0, pressure: 7.1, flow: 18400, power: 203.2, updated: '2초 전', trend: [7.0, 7.1, 7.2, 7.1, 7.0, 7.1, 7.1] },
+  { id: 'FDC-PCW-01', equipment: 'PCW Pump #1', group: 'PCW(ICW)', status: 'warning', tag: 'PCW_FLOW', value: 815, unit: 'm³/h', limitLow: 850, limitHigh: 1200, pressure: 4.6, flow: 815, power: 58.7, updated: '4초 전', trend: [920, 900, 875, 850, 835, 820, 815] },
+  { id: 'FDC-FAN-02', equipment: '배기 Fan #2', group: '배기 Fan', status: 'danger', tag: 'FAN_VIB', value: 6.8, unit: 'mm/s', limitLow: 0, limitHigh: 5.5, pressure: -380, flow: 7800, power: 28.9, updated: '방금 전', trend: [3.2, 3.8, 4.4, 5.1, 5.7, 6.2, 6.8] },
 ];
 
-function genAnomaly(limit: number, rising: boolean) {
-  return Array.from({ length: 24 }, (_, i) => ({
-    time: `${i}:00`,
-    value: +(limit + (rising ? (i > 18 ? (i - 18) * 0.4 : -0.3) : (i > 18 ? -(i - 18) * 0.05 : 0.1)) + (Math.random() - 0.5) * 0.5).toFixed(2),
-    limit,
-  }));
+const alarmItems = [
+  { id: 'FDC-FAN-02', message: 'Fan 진동 상한 초과', value: '6.8 mm/s', level: '위험', color: '#ff4444' },
+  { id: 'FDC-CH-03', message: '냉수 공급 온도 상한 접근', value: '8.2 °C', level: '주의', color: '#ffa500' },
+  { id: 'FDC-PCW-01', message: 'PCW 유량 하한 미달', value: '815 m³/h', level: '주의', color: '#ffa500' },
+];
+
+const trendData = Array.from({ length: 24 }, (_, i) => ({
+  time: `${String(i).padStart(2, '0')}:00`,
+  temp: +(6.2 + Math.sin(i / 3) * 0.7 + (i > 18 ? (i - 18) * 0.12 : 0)).toFixed(2),
+  pressure: +(7.0 + Math.cos(i / 4) * 0.25).toFixed(2),
+  vibration: +(3.1 + Math.max(0, i - 16) * 0.38 + Math.sin(i) * 0.12).toFixed(2),
+}));
+
+function KpiCard({ label, value, unit, color, sub, Icon }: {
+  label: string; value: string | number; unit?: string; color: string; sub: string; Icon: any;
+}) {
+  return (
+    <div className="bg-[#0f2940] border rounded-xl p-4" style={{ borderColor: `${color}35` }}>
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-gray-400 text-xs">{label}</span>
+        <Icon size={14} style={{ color }} />
+      </div>
+      <div className="flex items-baseline gap-1">
+        <span className="text-2xl font-bold" style={{ color }}>{value}</span>
+        {unit && <span className="text-xs opacity-70" style={{ color }}>{unit}</span>}
+      </div>
+      <div className="text-gray-500 text-xs mt-1">{sub}</div>
+    </div>
+  );
 }
 
-const realtimeData = [
-  { id: 'CH-01',  name: '냉동기 #1',  cat: '냉동기', status: 'normal',  temp: 6.5,  pressure: 4.2,  flow: 850,  power: 125.3, eff: 94.2, upd: '방금 전', trend: [6.3,6.4,6.5,6.5,6.4,6.5,6.5] },
-  { id: 'CH-02',  name: '냉동기 #2',  cat: '냉동기', status: 'normal',  temp: 6.8,  pressure: 4.1,  flow: 820,  power: 122.8, eff: 93.8, upd: '2초 전',  trend: [6.7,6.8,6.9,6.8,6.7,6.8,6.8] },
-  { id: 'CH-03',  name: '냉동기 #3',  cat: '냉동기', status: 'warning', temp: 8.2,  pressure: 3.9,  flow: 780,  power: 135.6, eff: 87.3, upd: '1초 전',  trend: [6.5,6.8,7.2,7.6,7.9,8.2,8.2] },
-  { id: 'AHU-01', name: '공조기 #1',  cat: '공조기', status: 'normal',  temp: 22.5, pressure: 150,  flow: 15000, power: 45.2, eff: 96.5, upd: '방금 전', trend: [22.3,22.4,22.5,22.5,22.4,22.5,22.5] },
-  { id: 'AHU-02', name: '공조기 #2',  cat: '공조기', status: 'normal',  temp: 22.8, pressure: 148,  flow: 14800, power: 44.8, eff: 95.8, upd: '3초 전',  trend: [22.6,22.7,22.8,22.9,22.8,22.8,22.7] },
-  { id: 'PMP-01', name: '펌프 #1',    cat: '펌프',   status: 'normal',  temp: 45.2, pressure: 5.5,  flow: 1200, power: 55.3,  eff: 92.8, upd: '방금 전', trend: [45.0,45.1,45.2,45.3,45.2,45.2,45.1] },
-  { id: 'PMP-02', name: '펌프 #2',    cat: '펌프',   status: 'warning', temp: 52.3, pressure: 5.2,  flow: 1150, power: 58.7,  eff: 88.5, upd: '4초 전',  trend: [48.5,49.2,50.1,51.0,51.8,52.3,52.3] },
-  { id: 'FAN-01', name: '배기팬 #1',  cat: 'FAN',    status: 'normal',  temp: 28.5, pressure: 1.2,  flow: 8500, power: 22.3,  eff: 94.2, upd: '1초 전',  trend: [28.3,28.4,28.5,28.5,28.4,28.5,28.5] },
-  { id: 'FAN-02', name: '배기팬 #2',  cat: 'FAN',    status: 'danger',  temp: 38.8, pressure: 1.1,  flow: 7800, power: 28.9,  eff: 78.3, upd: '방금 전', trend: [32.5,34.2,35.8,37.1,38.0,38.8,38.9] },
-];
-
 export function RealtimeMonitorTab() {
-  const [mainTab, setMainTab] = useState<'realtime' | 'hmi'>('hmi');
-  const [selectedCategory, setSelectedCategory] = useState('전체');
-  const [selectedAnomaly, setSelectedAnomaly] = useState<string | null>(null);
+  const [selectedGroup, setSelectedGroup] = useState('전체');
+  const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [refreshInterval, setRefreshInterval] = useState('5s');
 
-  const categories = ['전체', '냉동기', '공조기', '펌프', 'FAN'];
-  const filtered = selectedCategory === '전체' ? realtimeData : realtimeData.filter(d => d.cat === selectedCategory);
+  const groups = ['전체', ...Array.from(new Set(fdcData.map(d => d.group)))];
+  const filtered = selectedGroup === '전체' ? fdcData : fdcData.filter(d => d.group === selectedGroup);
+  const selected = fdcData.find(d => d.id === selectedTag) ?? fdcData[0];
 
-  const normalCount  = realtimeData.filter(d => d.status === 'normal').length;
-  const warningCount = realtimeData.filter(d => d.status === 'warning').length;
-  const dangerCount  = realtimeData.filter(d => d.status === 'danger').length;
+  const counts = useMemo(() => ({
+    normal: fdcData.filter(d => d.status === 'normal').length,
+    warning: fdcData.filter(d => d.status === 'warning').length,
+    danger: fdcData.filter(d => d.status === 'danger').length,
+  }), []);
 
-  const anomaly = anomalies.find(a => a.id === selectedAnomaly);
-  const anomalyChartData = anomaly
-    ? genAnomaly(anomaly.limit, anomaly.type === '급격 상승' || anomaly.type === '상한 초과')
-    : [];
+  const selectedTrend = selected.trend.map((value, i) => ({
+    time: `${String((i + 17) % 24).padStart(2, '0')}:00`,
+    value,
+    low: selected.limitLow,
+    high: selected.limitHigh,
+  }));
 
   return (
     <div className="space-y-4">
-      {/* 탭 헤더 */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-1 bg-[#0f2940] border border-[#1e3a5f] rounded-xl p-1">
-          <button
-            onClick={() => setMainTab('realtime')}
-            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${
-              mainTab === 'realtime'
-                ? 'bg-[#00d4ff] text-[#0a1929]'
-                : 'text-gray-400 hover:text-white'
-            }`}
-          >
-            📡 실시간 현황
-          </button>
-          <button
-            onClick={() => setMainTab('hmi')}
-            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${
-              mainTab === 'hmi'
-                ? 'bg-[#7c3aed] text-white'
-                : 'text-gray-400 hover:text-white'
-            }`}
-          >
-            📈 HMI 트렌드
-          </button>
+        <div>
+          <h1 className="text-white flex items-center gap-2 mb-1">
+            <Activity size={20} className="text-[#00d4ff]" />
+            FDC 실시간 현황
+          </h1>
+          <p className="text-gray-400 text-xs">설비 FDC 태그의 현재값, 기준 이탈, 추세를 실시간으로 모니터링합니다.</p>
         </div>
-
-        {mainTab === 'realtime' && (
-          <div className="flex items-center gap-2 bg-[#0f2940] border border-[#1e3a5f] rounded-lg px-3 py-1.5">
-            <RefreshCw size={12} className="text-[#00d4ff]" />
-            <span className="text-gray-400 text-xs">새로고침:</span>
-            <select value={refreshInterval} onChange={e => setRefreshInterval(e.target.value)}
-              className="bg-transparent text-[#00d4ff] text-xs outline-none cursor-pointer">
-              <option value="5s" className="bg-[#0a1525]">5초</option>
-              <option value="10s" className="bg-[#0a1525]">10초</option>
-              <option value="30s" className="bg-[#0a1525]">30초</option>
-            </select>
-          </div>
-        )}
-      </div>
-
-      {/* HMI 트렌드 탭 */}
-      {mainTab === 'hmi' && <HMITrendChart />}
-
-      {/* 실시간 현황 탭 — 아래 내용은 mainTab === 'realtime' 일 때만 렌더링 */}
-      {mainTab === 'realtime' && (<>
-
-      {/* 헤더 설명 */}
-      <div>
-        <h1 className="text-white flex items-center gap-2 mb-1">📡 실시간 설비 데이터</h1>
-        <p className="text-gray-400 text-xs">전체 설비 실시간 운전 데이터 모니터링</p>
-      </div>
-
-      {/* KPI + 이상감지 배너 */}
-      <div className="grid grid-cols-4 gap-3">
-        {[
-          { label: '모니터링 설비', value: realtimeData.length, unit: '대', color: '#00d4ff', sub: '실시간 수집 중' },
-          { label: '정상 운전',     value: normalCount,          unit: '대', color: '#00ff88', sub: `${+((normalCount/realtimeData.length)*100).toFixed(0)}% 가동률` },
-          { label: '주의 설비',     value: warningCount,         unit: '대', color: '#ffa500', sub: '점검 권장' },
-          { label: '위험 설비',     value: dangerCount,          unit: '대', color: '#ff4444', sub: '즉시 조치 필요' },
-        ].map(k => (
-          <div key={k.label} className="bg-[#0f2940] rounded-xl p-3" style={{ border: `1.5px solid ${k.color}30` }}>
-            <div className="text-gray-400 text-xs mb-1">{k.label}</div>
-            <div className="flex items-baseline gap-1">
-              <span className="text-2xl font-bold" style={{ color: k.color }}>{k.value}</span>
-              <span className="text-xs opacity-70" style={{ color: k.color }}>{k.unit}</span>
-            </div>
-            <div className="text-gray-500 text-xs mt-1">{k.sub}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* 이상 감지 */}
-      <div className="bg-[#0f2940] border border-[#ff4444]/40 rounded-xl overflow-hidden">
-        <div className="flex items-center gap-2 px-4 py-3 bg-[#ff4444]/5 border-b border-[#ff4444]/20">
-          <AlertTriangle size={14} className="text-[#ff4444]" />
-          <span className="text-white text-sm font-bold">이상 감지 항목</span>
-          <span className="bg-[#ff4444] text-white text-xs px-2 py-0.5 rounded-full">{anomalies.length}건</span>
-          <span className="text-gray-500 text-xs ml-auto">클릭하면 추이 그래프 확인</span>
+        <div className="flex items-center gap-2 bg-[#0f2940] border border-[#1e3a5f] rounded-lg px-3 py-1.5">
+          <RefreshCw size={12} className="text-[#00d4ff]" />
+          <span className="text-gray-400 text-xs">새로고침</span>
+          <select value={refreshInterval} onChange={e => setRefreshInterval(e.target.value)}
+            className="bg-transparent text-[#00d4ff] text-xs outline-none cursor-pointer">
+            <option value="5s" className="bg-[#0a1525]">5초</option>
+            <option value="10s" className="bg-[#0a1525]">10초</option>
+            <option value="30s" className="bg-[#0a1525]">30초</option>
+          </select>
         </div>
-        <div className="p-4">
-          <div className="grid grid-cols-3 gap-3">
-            {anomalies.map(a => (
-              <button
-                key={a.id}
-                onClick={() => setSelectedAnomaly(selectedAnomaly === a.id ? null : a.id)}
-                className={`text-left rounded-xl p-3 border transition-all ${
-                  selectedAnomaly === a.id
-                    ? 'border-[#00d4ff] bg-[#0a1929]'
-                    : 'border-[#1e3a5f] bg-[#0a1929] hover:border-[#2a4a6f]'
-                }`}
-              >
-                <div className="flex items-start justify-between mb-2">
-                  <span className="text-gray-300 text-xs font-medium leading-snug">{a.name}</span>
-                  <TrendingUp size={12} style={{ color: a.color }} className="flex-shrink-0 mt-0.5" />
-                </div>
-                <div className="flex items-baseline gap-1 mb-1">
-                  <span className="text-xl font-bold" style={{ color: a.color }}>{a.value}</span>
-                  <span className="text-xs opacity-70" style={{ color: a.color }}>{a.unit}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-gray-600 text-xs">기준 {a.limit}{a.unit}</span>
-                  <span className="text-xs px-1.5 py-0.5 rounded" style={{ backgroundColor: `${a.color}20`, color: a.color }}>{a.type}</span>
-                </div>
+      </div>
+
+      <div className="bg-[#0f2940] border border-[#1e3a5f] rounded-xl p-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2 text-gray-400 text-xs">
+            <Search size={13} className="text-[#00d4ff]" />
+            설비 그룹
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {groups.map(group => (
+              <button key={group} onClick={() => setSelectedGroup(group)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                  selectedGroup === group
+                    ? 'bg-[#00d4ff] text-[#07111e]'
+                    : 'bg-[#07111e] border border-[#1e3a5f] text-gray-400 hover:text-white'
+                }`}>
+                {group}
               </button>
             ))}
           </div>
-
-          {/* 이상 그래프 */}
-          {anomaly && (
-            <div className="mt-3 bg-[#07111e] border border-[#1e3a5f] rounded-xl p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <TrendingUp size={13} className="text-[#00d4ff]" />
-                <span className="text-white text-xs font-bold">{anomaly.name} · 24시간 추이</span>
-              </div>
-              <div className="h-40">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={anomalyChartData}>
-                    <defs>
-                      <linearGradient id="anomGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor={anomaly.color} stopOpacity={0.3} />
-                        <stop offset="95%" stopColor={anomaly.color} stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#1e3a5f" />
-                    <XAxis dataKey="time" stroke="#374151" tick={{ fill: '#6b7280', fontSize: 9 }} interval={5} />
-                    <YAxis stroke="#374151" tick={{ fill: '#6b7280', fontSize: 9 }} width={30} />
-                    <Tooltip contentStyle={{ backgroundColor: '#0a1929', border: '1px solid #1e3a5f', borderRadius: '6px', color: '#fff', fontSize: '10px' }} />
-                    <ReferenceLine y={anomaly.limit} stroke="#ffa500" strokeDasharray="4 4"
-                      label={{ value: `기준 ${anomaly.limit}${anomaly.unit}`, fill: '#ffa500', fontSize: 9, position: 'right' }} />
-                    <Area type="monotone" dataKey="value" stroke={anomaly.color} strokeWidth={2} fill="url(#anomGrad)" dot={false} />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-          )}
+          <div className="ml-auto text-gray-500 text-xs">현재 {filtered.length}개 태그 표시</div>
         </div>
       </div>
 
-      {/* 카테고리 필터 */}
-      <div className="flex items-center gap-2">
-        {categories.map(c => (
-          <button key={c} onClick={() => setSelectedCategory(c)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-              selectedCategory === c ? 'bg-[#00d4ff] text-white' : 'bg-[#0f2940] border border-[#1e3a5f] text-gray-400 hover:bg-[#1e3a5f]'
-            }`}>
-            {c}
-          </button>
-        ))}
-        <span className="ml-auto text-gray-500 text-xs">{filtered.length}개 설비</span>
+      <div className="grid grid-cols-4 gap-3">
+        <KpiCard label="수집 태그" value={fdcData.length} unit="개" color="#00d4ff" sub="FDC 실시간 수집 중" Icon={Activity} />
+        <KpiCard label="정상" value={counts.normal} unit="개" color="#00ff88" sub="기준 범위 내" Icon={Gauge} />
+        <KpiCard label="주의" value={counts.warning} unit="개" color="#ffa500" sub="확인 필요" Icon={AlertTriangle} />
+        <KpiCard label="위험" value={counts.danger} unit="개" color="#ff4444" sub="즉시 조치 권장" Icon={Zap} />
       </div>
 
-      {/* 실시간 테이블 */}
-      <div className="bg-[#0f2940] border border-[#1e3a5f] rounded-xl overflow-hidden">
-        <div className="grid grid-cols-[36px_80px_100px_80px_90px_80px_80px_80px_120px_70px] gap-2 px-4 py-2.5 bg-[#0a1929] border-b border-[#1e3a5f]">
-          {['', '코드', '설비명', '상태', '온도(°C)', '압력', '유량', '전력(kW)', '효율(%)', '업데이트'].map(h => (
-            <div key={h} className="text-gray-500 text-xs">{h}</div>
-          ))}
+      <div className="grid grid-cols-3 gap-4">
+        <div className="col-span-2 bg-[#0f2940] border border-[#1e3a5f] rounded-xl p-4">
+          <div className="flex items-center justify-between mb-4">
+            <span className="text-white text-sm font-bold">FDC 주요 태그 트렌드</span>
+            <span className="text-gray-500 text-xs">24시간 기준</span>
+          </div>
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={trendData}>
+                <defs>
+                  <linearGradient id="fdcTrendGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#00d4ff" stopOpacity={0.35} />
+                    <stop offset="95%" stopColor="#00d4ff" stopOpacity={0.02} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1e3a5f" vertical={false} />
+                <XAxis dataKey="time" stroke="#374151" tick={{ fill: '#9ca3af', fontSize: 9 }} interval={3} />
+                <YAxis stroke="#374151" tick={{ fill: '#9ca3af', fontSize: 9 }} />
+                <Tooltip contentStyle={{ backgroundColor: '#0a1929', border: '1px solid #1e3a5f', borderRadius: '8px', color: '#fff', fontSize: '11px' }} />
+                <Area type="monotone" dataKey="temp" name="온도" stroke="#00d4ff" strokeWidth={2} fill="url(#fdcTrendGrad)" dot={false} />
+                <Line type="monotone" dataKey="pressure" name="압력" stroke="#00ff88" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="vibration" name="진동" stroke="#ffa500" strokeWidth={2} dot={false} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
         </div>
-        <div className="divide-y divide-[#1e3a5f]">
-          {filtered.map(item => {
-            const sc = statusCfg[item.status as keyof typeof statusCfg];
-            const trendPoints = item.trend.map((v, i) => ({ i, v }));
-            return (
-              <div key={item.id}
-                className="grid grid-cols-[36px_80px_100px_80px_90px_80px_80px_80px_120px_70px] gap-2 px-4 py-3 hover:bg-[#0a1929] transition-colors">
-                {/* dot */}
-                <div className="flex items-center">
-                  <span className={`w-2 h-2 rounded-full ${sc.dot}`} />
+
+        <div className="bg-[#0f2940] border border-[#ff4444]/35 rounded-xl overflow-hidden">
+          <div className="flex items-center gap-2 px-4 py-3 border-b border-[#ff4444]/20 bg-[#ff4444]/5">
+            <AlertTriangle size={14} className="text-[#ff4444]" />
+            <span className="text-white text-sm font-bold">기준 이탈 알림</span>
+            <span className="text-gray-500 text-xs ml-auto">{alarmItems.length}건</span>
+          </div>
+          <div className="p-4 space-y-2">
+            {alarmItems.map(item => (
+              <button key={item.id} onClick={() => setSelectedTag(item.id)}
+                className="w-full text-left bg-[#07111e] border border-[#1e3a5f] rounded-lg p-3 hover:border-[#2a4a6f] transition-colors">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-white text-xs font-bold">{item.id}</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ color: item.color, backgroundColor: `${item.color}20` }}>{item.level}</span>
                 </div>
-                {/* 코드 */}
-                <div className="flex items-center">
-                  <span className="text-[#00d4ff] text-xs font-mono font-bold">{item.id}</span>
-                </div>
-                {/* 설비명 */}
-                <div className="flex items-center">
-                  <span className="text-white text-xs">{item.name}</span>
-                </div>
-                {/* 상태 */}
-                <div className="flex items-center">
-                  <span className={`text-xs font-bold px-2 py-0.5 rounded border ${sc.bg} ${sc.border} ${sc.text}`}>{sc.label}</span>
-                </div>
-                {/* 온도 + 스파크라인 */}
-                <div className="flex items-center gap-2">
-                  <span className={`text-xs font-bold ${item.status !== 'normal' ? sc.text : 'text-white'}`}>{item.temp.toFixed(1)}</span>
-                  <div className="w-14 h-7">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={trendPoints}>
-                        <Line type="monotone" dataKey="v" stroke={item.status === 'danger' ? '#ff4444' : item.status === 'warning' ? '#ffa500' : '#00d4ff'} strokeWidth={1.5} dot={false} />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
-                {/* 압력 */}
-                <div className="flex items-center">
-                  <span className="text-white text-xs">{item.pressure.toFixed(1)}</span>
-                </div>
-                {/* 유량 */}
-                <div className="flex items-center">
-                  <span className="text-white text-xs">{item.flow.toLocaleString()}</span>
-                </div>
-                {/* 전력 */}
-                <div className="flex items-center">
-                  <span className="text-white text-xs">{item.power.toFixed(1)}</span>
-                </div>
-                {/* 효율 바 */}
-                <div className="flex items-center gap-2">
-                  <span className={`text-xs font-bold ${item.eff >= 90 ? 'text-[#00ff88]' : item.eff >= 80 ? 'text-[#ffa500]' : 'text-[#ff4444]'}`}>
-                    {item.eff.toFixed(1)}
-                  </span>
-                  <div className="flex-1 h-1.5 bg-[#0a1929] rounded-full overflow-hidden">
-                    <div className={`h-full rounded-full ${item.eff >= 90 ? 'bg-[#00ff88]' : item.eff >= 80 ? 'bg-[#ffa500]' : 'bg-[#ff4444]'}`}
-                      style={{ width: `${item.eff}%` }} />
-                  </div>
-                </div>
-                {/* 업데이트 */}
-                <div className="flex items-center">
-                  <span className="text-gray-500 text-xs">{item.upd}</span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-        <div className="flex items-center justify-between px-4 py-2.5 bg-[#0a1929] border-t border-[#1e3a5f]">
-          <span className="text-gray-500 text-xs">{filtered.length}개 설비 표시 중</span>
-          <div className="flex items-center gap-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#00ff88] animate-pulse" />
-            <span className="text-gray-500 text-xs">실시간 업데이트 중</span>
+                <div className="text-gray-400 text-xs">{item.message}</div>
+                <div className="text-xs font-bold mt-1" style={{ color: item.color }}>{item.value}</div>
+              </button>
+            ))}
           </div>
         </div>
       </div>
 
-      </>)}
+      <div className="grid grid-cols-3 gap-4">
+        <div className="col-span-2 bg-[#0f2940] border border-[#1e3a5f] rounded-xl overflow-hidden">
+          <div className="grid grid-cols-[110px_120px_120px_90px_90px_90px_90px_80px] gap-3 px-4 py-2.5 bg-[#0a1929] border-b border-[#1e3a5f]">
+            {['FDC ID', '설비', 'Tag', '상태', '현재값', '압력', '유량', '갱신'].map(h => (
+              <div key={h} className="text-gray-500 text-xs">{h}</div>
+            ))}
+          </div>
+          <div className="divide-y divide-[#1e3a5f]">
+            {filtered.map(row => {
+              const st = statusCfg[row.status as keyof typeof statusCfg];
+              return (
+                <button key={row.id} onClick={() => setSelectedTag(row.id)}
+                  className={`w-full grid grid-cols-[110px_120px_120px_90px_90px_90px_90px_80px] gap-3 px-4 py-3 text-left hover:bg-[#0a1929] transition-colors ${selected.id === row.id ? 'bg-[#00d4ff]/5' : ''}`}>
+                  <span className="text-[#00d4ff] text-xs font-mono font-bold">{row.id}</span>
+                  <span className="text-white text-xs">{row.equipment}</span>
+                  <span className="text-gray-300 text-xs font-mono">{row.tag}</span>
+                  <span className={`w-fit text-xs px-2 py-0.5 rounded border ${st.bg} ${st.border}`} style={{ color: st.color }}>{st.label}</span>
+                  <span className="text-white text-xs font-bold">{row.value}{row.unit}</span>
+                  <span className="text-gray-300 text-xs">{row.pressure}</span>
+                  <span className="text-gray-300 text-xs">{row.flow.toLocaleString()}</span>
+                  <span className="text-gray-500 text-xs">{row.updated}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="bg-[#0f2940] border border-[#1e3a5f] rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <TrendingUp size={14} className="text-[#00d4ff]" />
+            <span className="text-white text-sm font-bold">{selected.tag}</span>
+          </div>
+          <div className="text-gray-400 text-xs mb-3">{selected.equipment} · {selected.id}</div>
+          <div className="h-40">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={selectedTrend}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1e3a5f" vertical={false} />
+                <XAxis dataKey="time" stroke="#374151" tick={{ fill: '#9ca3af', fontSize: 9 }} />
+                <YAxis stroke="#374151" tick={{ fill: '#9ca3af', fontSize: 9 }} />
+                <Tooltip contentStyle={{ backgroundColor: '#0a1929', border: '1px solid #1e3a5f', borderRadius: '8px', color: '#fff', fontSize: '11px' }} />
+                <ReferenceLine y={selected.limitHigh} stroke="#ff4444" strokeDasharray="4 4" />
+                <ReferenceLine y={selected.limitLow} stroke="#ffa500" strokeDasharray="4 4" />
+                <Line type="monotone" dataKey="value" stroke={statusCfg[selected.status as keyof typeof statusCfg].color} strokeWidth={2} dot={false} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="grid grid-cols-2 gap-2 mt-3">
+            <div className="bg-[#07111e] rounded-lg p-2">
+              <div className="text-gray-500 text-[10px]">하한</div>
+              <div className="text-[#ffa500] text-xs font-bold">{selected.limitLow}{selected.unit}</div>
+            </div>
+            <div className="bg-[#07111e] rounded-lg p-2">
+              <div className="text-gray-500 text-[10px]">상한</div>
+              <div className="text-[#ff4444] text-xs font-bold">{selected.limitHigh}{selected.unit}</div>
+            </div>
+            <div className="bg-[#07111e] rounded-lg p-2">
+              <div className="text-gray-500 text-[10px]">전력</div>
+              <div className="text-white text-xs font-bold">{selected.power} kW</div>
+            </div>
+            <div className="bg-[#07111e] rounded-lg p-2">
+              <div className="text-gray-500 text-[10px]">그룹</div>
+              <div className="text-white text-xs font-bold">{selected.group}</div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

@@ -16,12 +16,30 @@ from database import (
     load_date_form, save_date_form_cell, save_date_form_bulk,
     upsert_work_orders, query_work_orders, get_work_order_kpi,
     get_work_order_filter_options,
+    upsert_energy_usage, query_energy_db,
 )
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
+    # 서버 시작 시 전공장 엑셀 파일 자동 가져오기 (파일 없으면 무시)
+    try:
+        all_records = []
+        for cfg in ZANGONG_FILES:
+            path = os.path.join(PROJECT_ROOT, cfg['folder'], cfg['filename'])
+            if not os.path.exists(path):
+                continue
+            wb = openpyxl.load_workbook(path, data_only=True)
+            records = (_parse_zangong_horizontal(wb, cfg['util_key'])
+                       if cfg['format'] == 'horizontal'
+                       else _parse_zangong_vertical(wb, cfg['util_key']))
+            wb.close()
+            all_records.extend(records)
+        if all_records:
+            await upsert_energy_usage(all_records)
+    except Exception:
+        pass
     yield
 
 
@@ -267,54 +285,81 @@ async def trend_range(
 async def upload_work_orders(file: UploadFile = File(...)):
     content = await file.read()
     wb = openpyxl.load_workbook(io.BytesIO(content), data_only=True)
-    ws = wb.active
 
-    # Find header row (row with 'Wo No')
-    header_row = None
-    headers = []
-    for i, row in enumerate(ws.iter_rows(values_only=True), start=1):
-        if row and any(str(c).strip() == 'Wo No' for c in row if c is not None):
-            header_row = i
-            headers = [str(c).strip() if c is not None else '' for c in row]
-            break
-
-    if header_row is None:
-        return JSONResponse({'error': 'Header row not found'}, status_code=400)
-
-    col_map = {
-        'wo_no':      next((i for i, h in enumerate(headers) if h == 'Wo No'), None),
-        'work_type':  next((i for i, h in enumerate(headers) if h == '작업 유형'), None),
-        'work_name':  next((i for i, h in enumerate(headers) if h == '작업명'), None),
-        'equip_code': next((i for i, h in enumerate(headers) if h == '설비코드'), None),
-        'equip_name': next((i for i, h in enumerate(headers) if h == '설비명'), None),
-        'equip_type': next((i for i, h in enumerate(headers) if h == '설비종류'), None),
-        'location':   next((i for i, h in enumerate(headers) if h == '위치 L4'), None),
-        'start_date': next((i for i, h in enumerate(headers) if h == '시작일'), None),
-        'end_date':   next((i for i, h in enumerate(headers) if h == '종료일'), None),
-        'department': next((i for i, h in enumerate(headers) if h == '작업부서'), None),
-        'worker':     next((i for i, h in enumerate(headers) if h == '작업자'), None),
-        'writer':     next((i for i, h in enumerate(headers) if h == '작성자'), None),
-        'wo_status':  next((i for i, h in enumerate(headers) if h == 'WO 상태'), None),
+    header_aliases = {
+        'wo_no': ['Wo No', 'WO No', 'WO번호', '작업번호'],
+        'work_type': ['작업 유형', '작업유형'],
+        'work_name': ['작업명'],
+        'equip_code': ['설비코드'],
+        'equip_name': ['설비명'],
+        'equip_type': ['설비종류'],
+        'location': ['위치 L4', '위치'],
+        'start_date': ['시작일'],
+        'end_date': ['종료일'],
+        'department': ['작업부서'],
+        'worker': ['작업자'],
+        'writer': ['작성자'],
+        'wo_status': ['WO 상태', 'WO상태', '상태'],
     }
 
+    def normalize_header(value) -> str:
+        return str(value or '').strip().replace('\n', ' ')
+
+    def find_header_row(ws):
+        for row_no, row in enumerate(ws.iter_rows(values_only=True), start=1):
+            headers = [normalize_header(c) for c in row]
+            if any(h in header_aliases['wo_no'] for h in headers):
+                return row_no, headers
+        return None, []
+
+    def build_col_map(headers: list[str]) -> dict:
+        result = {}
+        for key, aliases in header_aliases.items():
+            result[key] = next((i for i, h in enumerate(headers) if h in aliases), None)
+        return result
+
+    def cell_to_text(value) -> str:
+        if value is None:
+            return ''
+        if hasattr(value, 'strftime'):
+            return value.strftime('%Y-%m-%d')
+        return str(value).strip()
+
     records = []
-    for row in ws.iter_rows(min_row=header_row + 1, values_only=True):
-        if not row or all(c is None for c in row):
+    seen_wo_no: set[str] = set()
+    for ws in wb.worksheets:
+        header_row, headers = find_header_row(ws)
+        if header_row is None:
             continue
-        def get(key):
-            idx = col_map.get(key)
-            if idx is None or idx >= len(row):
-                return ''
-            v = row[idx]
-            if v is None:
-                return ''
-            if hasattr(v, 'strftime'):
-                return v.strftime('%Y-%m-%d')
-            return str(v).strip()
-        wo_no = get('wo_no')
-        if not wo_no or wo_no == '예시값':
+
+        col_map = build_col_map(headers)
+        if col_map.get('wo_no') is None:
             continue
-        records.append({k: get(k) for k in col_map})
+
+        for row in ws.iter_rows(min_row=header_row + 1, values_only=True):
+            if not row or all(c is None for c in row):
+                continue
+
+            def get(key: str) -> str:
+                idx = col_map.get(key)
+                if idx is None or idx >= len(row):
+                    return ''
+                return cell_to_text(row[idx])
+
+            raw_wo_no = get('wo_no')
+            if not raw_wo_no or raw_wo_no in {'예시값', '임시값', '임시'}:
+                continue
+
+            wo_no = raw_wo_no
+            if wo_no in seen_wo_no:
+                wo_no = f'{ws.title}-{raw_wo_no}'
+            seen_wo_no.add(wo_no)
+
+            record = {key: get(key) for key in header_aliases}
+            record['wo_no'] = wo_no
+            records.append(record)
+
+    wb.close()
 
     if not records:
         return JSONResponse({'inserted': 0, 'updated': 0, 'message': '유효한 데이터 없음'})
@@ -354,6 +399,128 @@ async def work_order_kpi(
 async def work_order_filter_options():
     data = await get_work_order_filter_options()
     return JSONResponse(data)
+
+
+# ── 전공장 엑셀 파싱 & DB 저장 ───────────────────────────────────────
+ZANGONG_SHEET_MAP = {'1공장': 'f1', '2공장': 'f2', '3공장': 'f3', '신공장': 'fnew'}
+
+ZANGONG_FILES = [
+    {'util_key': 'gas',      'folder': 'LNG',      'filename': '도시가스사용량_전공장.xlsx', 'format': 'horizontal'},
+    {'util_key': 'nitrogen', 'folder': 'NItrogen', 'filename': '질소사용량_전공장.xlsx',    'format': 'vertical'},
+    {'util_key': 'argon',    'folder': 'ARGON',    'filename': '아르곤사용량_전공장.xlsx',  'format': 'vertical'},
+]
+
+
+def _parse_zangong_horizontal(wb, util_key: str) -> list:
+    """LNG 가로형: 1행=날짜(열), 2행=예산사용량(budget), 3행=실적사용량(value)"""
+    records = []
+    for sheet_name, factory_key in ZANGONG_SHEET_MAP.items():
+        if sheet_name not in wb.sheetnames:
+            continue
+        ws = wb[sheet_name]
+        rows_data = list(ws.iter_rows(min_row=1, max_row=3, values_only=True))
+        if len(rows_data) < 3:
+            continue
+        date_row = rows_data[0]
+        budg_row = rows_data[1]   # 2행 = 예산사용량 = budget
+        val_row  = rows_data[2]   # 3행 = 실적사용량 = value
+        for i in range(1, len(date_row)):
+            d = date_row[i]
+            v = val_row[i] if i < len(val_row) else None
+            if d is None or not hasattr(d, 'strftime'):
+                continue
+            # 실적(value)이 없으면 건너뜀
+            if v is None:
+                continue
+            try:
+                fv = float(v)
+                if fv <= 0:
+                    continue
+            except (TypeError, ValueError):
+                continue
+            fb = None
+            if i < len(budg_row) and budg_row[i] is not None:
+                try:
+                    fb = float(budg_row[i])
+                    if fb <= 0:
+                        fb = None
+                except (TypeError, ValueError):
+                    pass
+            rec = {'util_key': util_key, 'factory': factory_key,
+                   'date': d.strftime('%Y-%m-%d'), 'value': fv}
+            if fb is not None:
+                rec['budget'] = fb
+            records.append(rec)
+    return records
+
+
+def _parse_zangong_vertical(wb, util_key: str) -> list:
+    """질소/아르곤 세로형: A열=날짜, B열=사용량
+    3공장 시트는 B열=3공장(f3), C열=신공장(fnew) 별도 저장"""
+    records = []
+    for sheet_name in wb.sheetnames:
+        ws = wb[sheet_name]
+        if sheet_name == '3공장':
+            # B열 → f3 (P1/P2/기타), C열 → fnew (P3/G3/UT동)
+            for row in ws.iter_rows(min_row=2, values_only=True):
+                if not row or row[0] is None or not hasattr(row[0], 'strftime'):
+                    continue
+                date_str = row[0].strftime('%Y-%m-%d')
+                for col_idx, fk in [(1, 'f3'), (2, 'fnew')]:
+                    if col_idx >= len(row) or row[col_idx] is None:
+                        continue
+                    try:
+                        fv = float(row[col_idx])
+                        if fv > 0:
+                            records.append({'util_key': util_key, 'factory': fk,
+                                            'date': date_str, 'value': fv})
+                    except (TypeError, ValueError):
+                        pass
+        elif sheet_name in ZANGONG_SHEET_MAP:
+            factory_key = ZANGONG_SHEET_MAP[sheet_name]
+            for row in ws.iter_rows(min_row=2, values_only=True):
+                if not row or row[0] is None or not hasattr(row[0], 'strftime'):
+                    continue
+                if len(row) <= 1 or row[1] is None:
+                    continue
+                try:
+                    fv = float(row[1])
+                    if fv <= 0:
+                        continue
+                except (TypeError, ValueError):
+                    continue
+                records.append({'util_key': util_key, 'factory': factory_key,
+                                'date': row[0].strftime('%Y-%m-%d'), 'value': fv})
+    return records
+
+
+@app.post('/api/energy/import')
+async def import_energy_files():
+    all_records = []
+    errors = []
+    for cfg in ZANGONG_FILES:
+        path = os.path.join(PROJECT_ROOT, cfg['folder'], cfg['filename'])
+        if not os.path.exists(path):
+            errors.append(f"{cfg['filename']} 파일 없음")
+            continue
+        try:
+            wb = openpyxl.load_workbook(path, data_only=True)
+            if cfg['format'] == 'horizontal':
+                records = _parse_zangong_horizontal(wb, cfg['util_key'])
+            else:
+                records = _parse_zangong_vertical(wb, cfg['util_key'])
+            wb.close()
+            all_records.extend(records)
+        except Exception as e:
+            errors.append(f"{cfg['filename']}: {str(e)}")
+
+    result = await upsert_energy_usage(all_records) if all_records else {'count': 0}
+    return JSONResponse({**result, 'errors': errors})
+
+
+@app.get('/api/energy/db')
+async def get_energy_from_db():
+    return JSONResponse(await query_energy_db())
 
 
 # ── 에너지 폴더 스캔 ──────────────────────────────────────────────────

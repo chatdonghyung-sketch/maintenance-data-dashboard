@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Maintenance Data Dashboard V4 - Report Demo</title>
+  <style>
+    :root {
+      --bg: #040d1a;
+      --panel: #0f2940;
+      --inner: #07111e;
+      --line: #1e3a5f;
+      --line2: #1c2d3f;
+      --cyan: #00d4ff;
+      --green: #00ff88;
+      --orange: #ffa500;
+      --red: #ff4444;
+      --purple: #a78bfa;
+      --muted: #8b97a8;
+      --text: #f8fafc;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Pretendard, "Segoe UI", Arial, sans-serif;
+      overflow: hidden;
+    }
+    button, input, select { font: inherit; }
+    .app { display: flex; height: 100vh; }
+    .topbar {
+      position: fixed;
+      top: 0;
+      left: 224px;
+      right: 0;
+      height: 54px;
+      background: rgba(5, 15, 26, .96);
+      border-bottom: 1px solid var(--line2);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 20px;
+      z-index: 5;
+    }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; }
+    .brand-mark {
+      width: 28px; height: 28px; border-radius: 8px;
+      background: var(--cyan);
+      color: #07111e;
+      display: grid; place-items: center;
+      font-weight: 900;
+    }
+    .db-status {
+      display: flex; align-items: center; gap: 8px;
+      color: var(--green);
+      font-size: 12px;
+      border: 1px solid rgba(0, 255, 136, .28);
+      background: rgba(0, 255, 136, .08);
+      border-radius: 8px;
+      padding: 7px 10px;
+    }
+    .pulse {
+      width: 8px; height: 8px; border-radius: 999px;
+      background: var(--green);
+      box-shadow: 0 0 14px var(--green);
+    }
+    aside {
+      width: 224px;
+      height: 100vh;
+      background: #050f1a;
+      border-right: 1px solid var(--line2);
+      padding: 14px 12px;
+      overflow-y: auto;
+    }
+    .side-title { color: #e5edf8; font-weight: 900; margin: 4px 8px 16px; }
+    .section {
+      color: #5f7087;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: .06em;
+      border-top: 1px solid var(--line2);
+      padding: 14px 8px 6px;
+      margin-top: 10px;
+    }
+    .nav-btn {
+      width: 100%;
+      border: 0;
+      border-radius: 8px;
+      background: transparent;
+      color: #aab4c2;
+      padding: 8px 10px;
+      text-align: left;
+      font-size: 12px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .nav-btn:hover { background: #0a1525; color: #fff; }
+    .nav-btn.active {
+      background: var(--cyan);
+      color: #fff;
+      box-shadow: 0 0 18px rgba(0, 212, 255, .18);
+    }
+    .sub { margin-left: 13px; padding-left: 10px; border-left: 2px solid var(--line); }
+    main {
+      flex: 1;
+      margin-top: 54px;
+      overflow-y: auto;
+      padding: 20px;
+    }
+    .page { display: none; }
+    .page.active { display: block; }
+    .page-head { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 16px; }
+    h1 { margin: 0 0 6px; font-size: 22px; letter-spacing: 0; }
+    .desc { color: var(--muted); font-size: 12px; }
+    .sync-box {
+      color: #9fb3c8;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 12px;
+    }
+    .grid { display: grid; gap: 12px; }
+    .g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .g4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .g5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+    .span2 { grid-column: span 2; }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+      min-width: 0;
+    }
+    .kpi-label { color: #a4adba; font-size: 12px; margin-bottom: 8px; }
+    .kpi-value { font-size: 27px; line-height: 1; font-weight: 900; color: var(--cyan); }
+    .kpi-sub { color: #6d7a8c; font-size: 11px; margin-top: 8px; }
+    .green { color: var(--green); }
+    .orange { color: var(--orange); }
+    .red { color: var(--red); }
+    .purple { color: var(--purple); }
+    .cyan { color: var(--cyan); }
+    .card-title { display: flex; align-items: center; justify-content: space-between; font-weight: 800; font-size: 14px; margin-bottom: 12px; }
+    .tag {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 10px; font-weight: 800;
+      border-radius: 999px;
+      padding: 4px 7px;
+      background: rgba(0, 212, 255, .12);
+      color: var(--cyan);
+    }
+    .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th {
+      text-align: left;
+      color: #8794a6;
+      background: #0a1929;
+      padding: 10px;
+      white-space: nowrap;
+      font-weight: 700;
+    }
+    td {
+      padding: 10px;
+      border-top: 1px solid rgba(30, 58, 95, .75);
+      color: #cdd6e1;
+      white-space: nowrap;
+    }
+    tr:hover td { background: rgba(10, 25, 41, .65); }
+    .status {
+      border-radius: 999px;
+      padding: 3px 7px;
+      font-size: 10px;
+      font-weight: 800;
+    }
+    .ok { color: var(--green); background: rgba(0, 255, 136, .12); }
+    .warn { color: var(--orange); background: rgba(255, 165, 0, .12); }
+    .bad { color: var(--red); background: rgba(255, 68, 68, .12); }
+    .chart {
+      height: 250px;
+      background: var(--inner);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px;
+    }
+    .bar-row { display: grid; grid-template-columns: 100px 1fr 54px; gap: 10px; align-items: center; margin: 11px 0; }
+    .bar-label { color: #b8c2cf; font-size: 12px; }
+    .bar-track { height: 9px; background: #07111e; border-radius: 999px; overflow: hidden; }
+    .bar-fill { height: 100%; border-radius: 999px; background: var(--cyan); }
+    .bar-val { text-align: right; color: #e6edf6; font-size: 12px; font-weight: 800; }
+    .form-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }
+    input, select {
+      min-width: 0;
+      background: var(--inner);
+      border: 1px solid var(--line);
+      color: #dbe4ef;
+      border-radius: 8px;
+      padding: 8px;
+      font-size: 12px;
+      outline: none;
+    }
+    .primary {
+      border: 0;
+      border-radius: 8px;
+      background: var(--cyan);
+      color: #07111e;
+      font-size: 12px;
+      font-weight: 900;
+      padding: 8px 10px;
+      cursor: pointer;
+    }
+    .mini-list { display: grid; gap: 8px; }
+    .mini-item {
+      background: var(--inner);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px;
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 12px;
+    }
+    .alarm {
+      border-color: rgba(255, 68, 68, .45);
+      background: rgba(255, 68, 68, .08);
+    }
+    @media (max-width: 1200px) {
+      .g4, .g5 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .g3 { grid-template-columns: 1fr; }
+      .span2 { grid-column: span 1; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside>
+      <div class="side-title">MDD V4 보고용</div>
+      <button class="nav-btn active" data-page="dashboard">▣ 대시보드</button>
+      <div class="section">설비 시스템</div>
+      <button class="nav-btn" data-page="equipment">▸ 설비 현황</button>
+      <div class="sub">
+        <button class="nav-btn" data-page="fdc">FDC 실시간 현황</button>
+        <button class="nav-btn" data-page="hmi">HMI 트렌드 현황</button>
+        <button class="nav-btn" data-page="energy">에너지 사용량</button>
+      </div>
+      <div class="section">정비 관리</div>
+      <button class="nav-btn" data-page="workorder">작업보고</button>
+      <button class="nav-btn" data-page="inspection">예방점검</button>
+      <div class="section">관리</div>
+      <button class="nav-btn" data-page="cost">비용관리</button>
+      <button class="nav-btn" data-page="inventory">재고관리</button>
+      <button class="nav-btn" data-page="compliance">법규 관리</button>
+    </aside>
+    <div class="topbar">
+      <div class="brand"><span class="brand-mark">M</span> SK실트론 기계팀 설비 유지보수 통합 대시보드</div>
+      <div class="db-status"><span class="pulse"></span> PostgreSQL mdd_db 연결됨 · 마지막 동기화 2026-05-03 14:42</div>
+    </div>
+    <main>
+      <section id="dashboard" class="page active"></section>
+      <section id="equipment" class="page"></section>
+      <section id="fdc" class="page"></section>
+      <section id="hmi" class="page"></section>
+      <section id="energy" class="page"></section>
+      <section id="workorder" class="page"></section>
+      <section id="inspection" class="page"></section>
+      <section id="cost" class="page"></section>
+      <section id="inventory" class="page"></section>
+      <section id="compliance" class="page"></section>
+    </main>
+  </div>
+  <script>
+    const colors = ['#00d4ff', '#00ff88', '#ffa500', '#ff4444', '#a78bfa'];
+    const kpis = [
+      ['전체 설비', '675', '대', '#00d4ff', 'DB work_orders + equipment master'],
+      ['정상 설비', '641', '대', '#00ff88', '가동률 94.9%'],
+      ['주의 설비', '25', '대', '#ffa500', '예방점검 권장'],
+      ['위험 설비', '9', '대', '#ff4444', '즉시 조치 필요'],
+    ];
+    const workOrders = [
+      ['WO-3P-263035', '보일러 버너 연소 상태 점검', 'Boiler #2', '기계(3P)', '작성 중', '2026-05-12'],
+      ['WO-2P-262034', '냉각수 펌프 진동 점검 후 시운전', 'PCW Pump #1', '기계(2P)', '확정', '2026-05-09'],
+      ['WO-1P-261030', 'Gas 분석기 Sample Flow 점검', 'O2 Analyzer #2', '기계(1P)', '확정', '2026-04-30'],
+      ['WO-3P-263001', 'Ar Purifier Regeneration 확인', 'Ar Purifier #1', '기계(3P)', '작성 중', '2026-03-05'],
+      ['WO-1P-261002', '공조기 필터 차압 점검 후 시운전', '공조기 #3', '기계(1P)', '작성 대기', '2026-03-05'],
+    ];
+    const energy = [
+      ['도시가스', 1284000, 1400000, '#ff6b6b'],
+      ['스팀', 854000, 1000000, '#ffa500'],
+      ['질소', 612000, 680000, '#4ecdc4'],
+      ['아르곤', 318000, 340000, '#95e1d3'],
+    ];
+    const inventory = [
+      ['Pump Seal', 'SIC 45A', 18, 10, 'A-01-03', '정상'],
+      ['AHU Filter', '610x610 HEPA', 7, 12, 'B-03-01', '부족'],
+      ['Bearing', '6205ZZ', 42, 20, 'C-02-05', '정상'],
+      ['Gas Sensor Cell', 'SiH4', 3, 5, 'D-01-02', '부족'],
+    ];
+
+    function money(n) { return new Intl.NumberFormat('ko-KR').format(n); }
+    function statusClass(s) {
+      if (['정상', '확정', '완료'].includes(s)) return 'ok';
+      if (['작성 중', '작성 대기', '주의', '예정', '갱신예정'].includes(s)) return 'warn';
+      return 'bad';
+    }
+    function pageHead(title, desc) {
+      return `<div class="page-head"><div><h1>${title}</h1><div class="desc">${desc}</div></div><div class="sync-box">DB 조회 성공 · rows cached · latency 18ms</div></div>`;
+    }
+    function kpiGrid(items) {
+      return `<div class="grid g4">${items.map(([label, value, unit, color, sub]) => `
+        <div class="card" style="border-color:${color}55">
+          <div class="kpi-label">${label}</div>
+          <div class="kpi-value" style="color:${color}">${value}<span style="font-size:12px;margin-left:4px">${unit}</span></div>
+          <div class="kpi-sub">${sub}</div>
+        </div>`).join('')}</div>`;
+    }
+    function table(headers, rows) {
+      return `<div class="table-wrap"><table><thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${
+        rows.map(r => `<tr>${r.map((c, i) => i === r.length - 2 || i === r.length - 1 && headers[i] === '상태' ? `<td><span class="status ${statusClass(c)}">${c}</span></td>` : `<td>${c}</td>`).join('')}</tr>`).join('')
+      }</tbody></table></div>`;
+    }
+    function bars(rows) {
+      return rows.map(([label, value, max, color]) => {
+        const pct = Math.min(100, Math.round(value / max * 100));
+        return `<div class="bar-row"><div class="bar-label">${label}</div><div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${color}"></div></div><div class="bar-val">${pct}%</div></div>`;
+      }).join('');
+    }
+    function lineChart(id, color = '#00d4ff') {
+      const pts = [32, 41, 38, 55, 49, 64, 58, 72, 67, 80, 74, 88];
+      const w = 520, h = 190;
+      const max = 100, min = 20;
+      const p = pts.map((v, i) => `${(i/(pts.length-1))*w},${h - ((v-min)/(max-min))*h}`).join(' ');
+      return `<svg viewBox="0 0 ${w} ${h}" width="100%" height="100%" aria-label="${id}">
+        <defs><linearGradient id="${id}" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="${color}" stop-opacity=".3"/><stop offset="100%" stop-color="${color}" stop-opacity="0"/></linearGradient></defs>
+        <polyline points="${p}" fill="none" stroke="${color}" stroke-width="4" stroke-linecap="round"/>
+        <polygon points="0,${h} ${p} ${w},${h}" fill="url(#${id})"/>
+        ${[0,1,2,3].map(i => `<line x1="0" x2="${w}" y1="${i*h/3}" y2="${i*h/3}" stroke="#1e3a5f" stroke-dasharray="4 4"/>`).join('')}
+      </svg>`;
+    }
+
+    function render() {
+      dashboard.innerHTML = pageHead('통합 대시보드', '운전일지, 에너지, 작업보고, 재고, 법규 데이터를 통합 조회합니다.') +
+        kpiGrid(kpis) +
+        `<div class="grid g3" style="margin-top:12px">
+          <div class="card span2"><div class="card-title">에너지 사용량 추이 <span class="tag">energy_usage table</span></div><div class="chart">${lineChart('dashEnergy', '#00d4ff')}</div></div>
+          <div class="card"><div class="card-title">최근 작업보고 <span class="tag">108건</span></div>${table(['WO No','작업명','상태'], workOrders.slice(0,4).map(w => [w[0], w[1], w[4]]))}</div>
+        </div>`;
+      equipment.innerHTML = pageHead('설비 현황', '냉동기, 공조기, Compressor, 보일러, PCW/ICW, Gas 설비를 유형별로 조회합니다.') +
+        kpiGrid([
+          ['냉동기', '46', '대', '#00d4ff', '주의 3 · 위험 2'],
+          ['공조기', '187', '대', '#00ff88', '필터 차압 감시'],
+          ['Compressor', '18', '대', '#ffa500', 'Dew Point 관리'],
+          ['Gas 감지기', '291', '대', '#ff4444', '미조치 알람 2'],
+        ]) +
+        `<div class="grid g3" style="margin-top:12px">
+          <div class="card"><div class="card-title">설비 유형별 가동률</div>${bars([['냉동기',94,100,'#00d4ff'],['공조기',96,100,'#00ff88'],['Compressor',91,100,'#ffa500'],['배기 Fan',89,100,'#ff4444']])}</div>
+          <div class="card span2"><div class="card-title">설비별 운전 트렌드</div><div class="chart">${lineChart('eqTrend', '#00ff88')}</div></div>
+        </div>`;
+      fdc.innerHTML = pageHead('FDC 실시간 현황', 'FDC 태그 현재값과 기준 이탈, 선택 태그 추세를 실시간 조회합니다.') +
+        kpiGrid([['수집 태그','6','개','#00d4ff','5초 주기'],['정상','3','개','#00ff88','기준 범위 내'],['주의','2','개','#ffa500','확인 필요'],['위험','1','개','#ff4444','즉시 조치']]) +
+        `<div class="grid g3" style="margin-top:12px"><div class="card span2"><div class="card-title">주요 FDC Tag Trend</div><div class="chart">${lineChart('fdcTrend', '#ffa500')}</div></div><div class="card"><div class="card-title">기준 이탈 알림</div><div class="mini-list">${['FAN_VIB 상한 초과','CHW_SUP_TEMP 상한 접근','PCW_FLOW 하한 미달'].map((x,i)=>`<div class="mini-item ${i===0?'alarm':''}"><span>${x}</span><b class="${i===0?'red':'orange'}">${i===0?'위험':'주의'}</b></div>`).join('')}</div></div></div>`;
+      hmi.innerHTML = pageHead('HMI 트렌드 현황', 'TREND_YYYYMMDD.xls 파일 기반으로 FAB/PROCESS별 24시간 Trend를 조회합니다.') +
+        `<div class="card"><div class="card-title">검색 조건 <span class="tag">HMI_Trend_data scan</span></div><div class="form-grid"><select><option>20260414</option></select><select><option>P1</option><option>P2</option></select><select><option>Utility</option><option>Cooling</option></select><button class="primary">조회</button></div></div>
+        <div class="grid g3" style="margin-top:12px"><div class="card span2"><div class="card-title">Tag MAX/AVG/MIN Trend</div><div class="chart">${lineChart('hmiTrend', '#a78bfa')}</div></div><div class="card"><div class="card-title">Alarm Violation</div>${bars([['상한 초과',3,10,'#ff4444'],['하한 미달',1,10,'#ffa500'],['정상 Tag',42,50,'#00ff88']])}</div></div>`;
+      energy.innerHTML = pageHead('에너지 사용량 현황', '엑셀 폴더 스캔 및 energy_usage DB 동기화 데이터로 표시합니다.') +
+        kpiGrid(energy.map(e => [e[0], money(e[1]), '', e[3], `예산 ${money(e[2])}`])) +
+        `<div class="grid g3" style="margin-top:12px"><div class="card span2"><div class="card-title">예산/실적 Trend</div><div class="chart">${lineChart('energyTrend', '#4ecdc4')}</div></div><div class="card"><div class="card-title">예산 대비 집행률</div>${bars(energy)}</div></div>`;
+      workorder.innerHTML = pageHead('작업보고', '작업보고서_전공장.xlsx 업로드 결과가 DB에 반영된 화면입니다.') +
+        kpiGrid([['전체','108','건','#00d4ff','3개 공장 합산'],['확정','54','건','#00ff88','작업 승인'],['작성 중','36','건','#00d4ff','진행 중'],['작성 대기','18','건','#ffa500','입력 필요']]) +
+        `<div class="card" style="margin-top:12px"><div class="card-title">작업보고 조회 결과 <span class="tag">work_orders table</span></div>${table(['WO No','작업명','설비명','부서','상태','시작일'], workOrders)}</div>`;
+      inspection.innerHTML = pageHead('예방점검', '일간/주간/월간 점검과 예방정비 계획을 조회합니다.') +
+        kpiGrid([['일간 점검','96','%','#00ff88','FFU/Boiler/Safety'],['주간 점검','82','%','#00d4ff','진행 중'],['월간 점검','74','%','#ffa500','미완료 6건'],['지연','2','건','#ff4444','조치 필요']]) +
+        `<div class="card" style="margin-top:12px"><div class="card-title">점검 현황</div>${bars([['FFU',96,100,'#00ff88'],['보일러',88,100,'#00d4ff'],['안전',91,100,'#00ff88'],['냉동기',74,100,'#ffa500']])}</div>`;
+      cost.innerHTML = pageHead('비용관리', '수선비, 소모품비, 지급수수료의 예산/실적과 증감 분석입니다.') +
+        kpiGrid([['예산 합계','48.7','백만원','#00d4ff','월 기준'],['실적 합계','49.6','백만원','#00ff88','DB 집계'],['증감','+0.9','백만원','#ff4444','예산 초과'],['집행률','101.8','%','#ffa500','관리 필요']]) +
+        `<div class="grid g3" style="margin-top:12px"><div class="card span2"><div class="card-title">비용 Trend</div><div class="chart">${lineChart('costTrend', '#ffa500')}</div></div><div class="card"><div class="card-title">항목별 예산 대비 실적</div>${bars([['수선비',92,100,'#00d4ff'],['소모품비',116,120,'#ff4444'],['지급수수료',98,100,'#00ff88']])}</div></div>`;
+      inventory.innerHTML = pageHead('재고관리', '품명, 규격, 안전재고, 불출 이력과 부족 알람을 조회합니다.') +
+        kpiGrid([['등록 품목','4','개','#00d4ff','자재 master'],['안전재고 이하','2','개','#ff4444','알람 발생'],['총 재고금액','592','만원','#ffa500','현재고 x 단가'],['불출 이력','12','건','#00ff88','월 기준']]) +
+        `<div class="card" style="margin-top:12px"><div class="card-title">재고조회 <span class="tag">inventory table</span></div>${table(['품명','규격','현재고','안전재고','랙번호','상태'], inventory)}</div>`;
+      compliance.innerHTML = pageHead('법규 관리', '법정 선임자, 교육현황, 정기검사를 통합 관리합니다.') +
+        kpiGrid([['선임자','3','명','#00d4ff','법정 등록'],['교육 이수','2','건','#00ff88','완료'],['교육 예정','1','건','#ffa500','D-38'],['검사 임박','1','건','#ff4444','압력용기']]) +
+        `<div class="grid g3" style="margin-top:12px"><div class="card"><div class="card-title">선임자 관리</div>${table(['역할','성명','상태'], [['기계설비 유지관리자','김관리','정상'],['고압가스 안전관리자','박안전','정상'],['에너지관리자','이보전','갱신예정']])}</div><div class="card"><div class="card-title">교육현황관리</div>${table(['교육명','대상','상태'], [['법정교육','김관리','완료'],['보수교육','이보전','예정']])}</div><div class="card"><div class="card-title">정기검사 관리</div>${table(['검사','예정일','상태'], [['보일러','2026-06-18','예정'],['압력용기','2026-05-28','위험']])}</div></div>`;
+    }
+
+    document.querySelectorAll('.nav-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const page = btn.dataset.page;
+        if (!page) return;
+        document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+        document.getElementById(page).classList.add('active');
+        document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+      });
+    });
+    render();
+  </script>
+</body>
+</html>

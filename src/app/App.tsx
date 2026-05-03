@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { Header } from "./components/Header";
 import { UsageChart } from "./components/UsageChart";
@@ -7,11 +7,13 @@ import { EquipmentStatusTab } from "./components/EquipmentStatusTab";
 import { ChillerTab } from "./components/ChillerTab";
 import { AirSystemTab } from "./components/AirSystemTab";
 import { UsageDataModal } from "./components/UsageDataModal";
-import { EnergyProvider, UtilityKey, UTIL_META } from "./context/EnergyContext";
+import { EnergyProvider, UtilityKey, UTIL_META, useEnergy, UTIL_KEYS } from "./context/EnergyContext";
 import { AIPredictionTab } from "./components/AIPredictionTab";
 import { AlarmEventTab } from "./components/AlarmEventTab";
 import { RealtimeMonitorTab } from "./components/RealtimeMonitorTab";
+import { HMITrendChart } from "./components/HMITrendChart";
 import { FMSDataTab } from "./components/FMSDataTab";
+import { EquipmentDashboardTab } from "./components/EquipmentDashboardTab";
 import { PreventiveMaintenanceTab } from "./components/PreventiveMaintenanceTab";
 import { BudgetOperationCard } from "./components/BudgetOperationCard";
 import { EnergyUsageSummaryCard } from "./components/EnergyUsageSummaryCard";
@@ -20,6 +22,9 @@ import { DailyInspectionTab } from "./components/DailyInspectionTab";
 import { WeeklyInspectionTab } from "./components/WeeklyInspectionTab";
 import { MonthlyInspectionTab } from "./components/MonthlyInspectionTab";
 import { WorkOrderTab } from './components/WorkOrderTab';
+import { CostManagementTab } from "./components/CostManagementTab";
+import { InventoryManagementTab } from "./components/InventoryManagementTab";
+import { ComplianceManagementTab } from "./components/ComplianceManagementTab";
 import {
   AlertTriangle, AlertCircle, FileText, RefreshCw,
   Brain, Calendar, Wrench, ChevronRight, Activity, CheckCircle2,
@@ -67,15 +72,8 @@ const pmSummary = [
   { label: "지연",        value: 2,  unit: "건", color: "#ff4444" },
 ];
 
-function generateHourlyData(min: number, max: number) {
-  const now = new Date();
-  return Array.from({ length: 12 }, (_, i) => {
-    const t = new Date(now.getTime() - (11 - i) * 3600000);
-    return { time: `${t.getHours()}시`, value: Math.floor(Math.random() * (max - min) + min) };
-  });
-}
-
 function App() {
+  const { combined, budgets } = useEnergy();
   const [activeTab, setActiveTab] = useState("dashboard");
   const [anomalyModalOpen, setAnomalyModalOpen] = useState(false);
   const [anomalyType, setAnomalyType] = useState<"warning" | "danger">("danger");
@@ -86,22 +84,29 @@ function App() {
   const [aiPredictionCount] = useState(4);
   const [alarmCount] = useState(8);
 
-  const [utilizationData, setUtilizationData] = useState({
-    gas:      generateHourlyData(3500, 4500),
-    steam:    generateHourlyData(2500, 3500),
-    nitrogen: generateHourlyData(1500, 2500),
-    argon:    generateHourlyData(800,  1200),
-  });
+  // 가장 최신 연월 자동 감지
+  const latestYM = useMemo(() => {
+    let latest = '';
+    UTIL_KEYS.forEach(k => combined(k).forEach(e => { if (e.date > latest) latest = e.date; }));
+    return latest ? latest.slice(0, 7) : new Date().toISOString().slice(0, 7);
+  }, [combined]);
 
-  useEffect(() => {
-    const id = setInterval(() => setUtilizationData({
-      gas:      generateHourlyData(3500, 4500),
-      steam:    generateHourlyData(2500, 3500),
-      nitrogen: generateHourlyData(1500, 2500),
-      argon:    generateHourlyData(800,  1200),
-    }), 5000);
-    return () => clearInterval(id);
-  }, []);
+  // 대시보드 에너지 카드용 실제 데이터 (최근 12일 스파크라인 + 에너지원별 최신월 합계)
+  const energyDashData = useMemo(() => {
+    return Object.fromEntries(UTIL_KEYS.map(k => {
+      const entries = combined(k);
+      const sorted = [...entries].sort((a, b) => b.date.localeCompare(a.date));
+      const utilYM = sorted[0]?.date.slice(0, 7) ?? latestYM;
+      const recent12 = sorted.slice(0, 12).reverse().map(e => ({
+        time: `${parseInt(e.date.slice(5, 7))}/${parseInt(e.date.slice(8, 10))}`,
+        value: e.value,
+      }));
+      const monthTotal = entries
+        .filter(e => e.date.startsWith(utilYM))
+        .reduce((s, e) => s + e.value, 0);
+      return [k, { sparkline: recent12, monthTotal }];
+    })) as Record<UtilityKey, { sparkline: { time: string; value: number }[]; monthTotal: number }>;
+  }, [combined, latestYM]);
 
   const totalEquip  = equipGroups.reduce((s, g) => s + g.total, 0);
   const normalEquip = equipGroups.reduce((s, g) => s + g.normal, 0);
@@ -166,48 +171,27 @@ function App() {
                   {/* ⑤ 에너지 사용량 — 최상단으로 이동 */}
                   <div className="bg-[#0f2940] border border-[#1e3a5f] rounded-xl p-4">
                     <div className="flex items-center justify-between mb-3">
-                      <span className="text-white text-sm font-bold">⚡ 에너지 사용량 현황</span>
+                      <div>
+                        <span className="text-white text-sm font-bold">⚡ 에너지 사용량 현황</span>
+                        <span className="text-gray-500 text-xs ml-2">{latestYM.slice(0,4)}년 {parseInt(latestYM.slice(5))}월 누계</span>
+                      </div>
                       <button onClick={() => setActiveTab("energy-usage")} className="text-[#00d4ff] text-xs hover:text-white flex items-center gap-0.5 transition-colors">
                         상세보기 <ChevronRight size={11} />
                       </button>
                     </div>
                     <div className="grid grid-cols-4 gap-4">
-                      <UsageChart
-                        title="도시가스 사용량"
-                        data={utilizationData.gas}
-                        target={50000}
-                        current={utilizationData.gas[utilizationData.gas.length - 1].value * 12}
-                        unit="Nm³"
-                        color="#00d4ff"
-                        onClick={() => { setSelectedUsageKey('gas'); setUsageModalOpen(true); }}
-                      />
-                      <UsageChart
-                        title="스팀 사용량"
-                        data={utilizationData.steam}
-                        target={35000}
-                        current={utilizationData.steam[utilizationData.steam.length - 1].value * 12}
-                        unit="ton"
-                        color="#ff6b9d"
-                        onClick={() => { setSelectedUsageKey('steam'); setUsageModalOpen(true); }}
-                      />
-                      <UsageChart
-                        title="질소 사용량"
-                        data={utilizationData.nitrogen}
-                        target={25000}
-                        current={utilizationData.nitrogen[utilizationData.nitrogen.length - 1].value * 12}
-                        unit="Nm³"
-                        color="#ffa500"
-                        onClick={() => { setSelectedUsageKey('nitrogen'); setUsageModalOpen(true); }}
-                      />
-                      <UsageChart
-                        title="아르곤 사용량"
-                        data={utilizationData.argon}
-                        target={12000}
-                        current={utilizationData.argon[utilizationData.argon.length - 1].value * 12}
-                        unit="Nm³"
-                        color="#00ff88"
-                        onClick={() => { setSelectedUsageKey('argon'); setUsageModalOpen(true); }}
-                      />
+                      {UTIL_KEYS.map(k => (
+                        <UsageChart
+                          key={k}
+                          title={`${UTIL_META[k].name} 사용량`}
+                          data={energyDashData[k].sparkline}
+                          target={budgets[k]}
+                          current={energyDashData[k].monthTotal}
+                          unit={UTIL_META[k].unit}
+                          color={UTIL_META[k].color}
+                          onClick={() => { setSelectedUsageKey(k); setUsageModalOpen(true); }}
+                        />
+                      ))}
                     </div>
                   </div>
 
@@ -627,9 +611,18 @@ function App() {
 
               {/* ── 나머지 탭들 ──────────────────────────────── */}
               {activeTab === "equipment"              && <EquipmentStatusTab />}
-              {activeTab === "realtime"               && <RealtimeMonitorTab />}
+              {(activeTab === "realtime" || activeTab === "fdc-realtime") && <RealtimeMonitorTab />}
+              {activeTab === "hmi-trend"              && <HMITrendChart />}
               {activeTab === "cooling"                && <ChillerTab />}
               {activeTab === "air"                    && <AirSystemTab />}
+              {activeTab === "compressor"             && <EquipmentDashboardTab type="compressor" />}
+              {activeTab === "boiler-dashboard"       && <EquipmentDashboardTab type="boiler-dashboard" />}
+              {activeTab === "pcw-icw"                && <EquipmentDashboardTab type="pcw-icw" />}
+              {activeTab === "pvac-hvac"              && <EquipmentDashboardTab type="pvac-hvac" />}
+              {activeTab === "ar-purifier"            && <EquipmentDashboardTab type="ar-purifier" />}
+              {activeTab === "gas-analyzer"           && <EquipmentDashboardTab type="gas-analyzer" />}
+              {activeTab === "exhaust-fan"            && <EquipmentDashboardTab type="exhaust-fan" />}
+              {activeTab === "gas-detector"           && <EquipmentDashboardTab type="gas-detector" />}
               {activeTab === "ai-prediction"          && <AIPredictionTab />}
               {activeTab === "alarm-events"           && <AlarmEventTab />}
               {activeTab === "fms-data"               && <FMSDataTab />}
@@ -638,6 +631,10 @@ function App() {
               {activeTab === "budget-operation"       && <BudgetOperationCard />}
               {activeTab === "energy-usage-summary"   && <EnergyUsageSummaryCard />}
               {activeTab === "energy-usage"           && <EnergyUsageTab />}
+              {activeTab === "cost-repair-consumable" && <CostManagementTab kind="repair-consumable" />}
+              {activeTab === "cost-service-fee"       && <CostManagementTab kind="service-fee" />}
+              {activeTab === "inventory-management"   && <InventoryManagementTab />}
+              {activeTab === "compliance-management"  && <ComplianceManagementTab />}
               {activeTab === "settings" && (
                 <div className="bg-[#0f2940] border border-[#1e3a5f] rounded-xl p-8">
                   <h2 className="text-white text-xl font-bold mb-4">설정</h2>

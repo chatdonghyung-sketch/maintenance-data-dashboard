@@ -99,6 +99,18 @@ async def init_db():
         await conn.execute(text('CREATE INDEX IF NOT EXISTS idx_wo_start ON work_orders(start_date)'))
         await conn.execute(text('CREATE INDEX IF NOT EXISTS idx_wo_dept ON work_orders(department)'))
         await conn.execute(text('CREATE INDEX IF NOT EXISTS idx_wo_status ON work_orders(wo_status_normalized)'))
+        await conn.execute(text('''
+            CREATE TABLE IF NOT EXISTS energy_usage (
+                util_key  TEXT NOT NULL,
+                factory   TEXT NOT NULL,
+                date      TEXT NOT NULL,
+                value     REAL NOT NULL,
+                PRIMARY KEY (util_key, factory, date)
+            )
+        '''))
+        await conn.execute(text('CREATE INDEX IF NOT EXISTS idx_eu_util ON energy_usage(util_key)'))
+        # 예산 컬럼 추가 (이미 있으면 무시)
+        await conn.execute(text('ALTER TABLE energy_usage ADD COLUMN IF NOT EXISTS budget REAL'))
 
 
 # ── 냉동기·냉각탑 운전일지 ────────────────────────────────────────────
@@ -386,6 +398,36 @@ async def get_work_order_kpi(start_date: str = None, end_date: str = None) -> di
         'total':     total,
         'other':     total - confirmed - drafting - pending,
     }
+
+
+async def upsert_energy_usage(records: list) -> dict:
+    async with async_session() as session:
+        for r in records:
+            await session.execute(text('''
+                INSERT INTO energy_usage (util_key, factory, date, value, budget)
+                VALUES (:util_key, :factory, :date, :value, :budget)
+                ON CONFLICT(util_key, factory, date) DO UPDATE SET value=EXCLUDED.value, budget=EXCLUDED.budget
+            '''), {**r, 'budget': r.get('budget')})
+        await session.commit()
+    return {'count': len(records)}
+
+
+async def query_energy_db() -> dict:
+    result = {
+        uk: {fk: [] for fk in ['f1', 'f2', 'f3', 'fnew']}
+        for uk in ['gas', 'steam', 'nitrogen', 'argon']
+    }
+    async with async_session() as session:
+        rows = await session.execute(
+            text('SELECT util_key, factory, date, value, budget FROM energy_usage ORDER BY date')
+        )
+        for row in rows:
+            if row.util_key in result and row.factory in result[row.util_key]:
+                entry: dict = {'date': row.date, 'value': row.value}
+                if row.budget is not None:
+                    entry['budget'] = row.budget
+                result[row.util_key][row.factory].append(entry)
+    return result
 
 
 async def get_work_order_filter_options() -> dict:
