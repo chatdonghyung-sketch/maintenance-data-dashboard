@@ -200,15 +200,16 @@ GET  /api/work-orders/filter-options
 ```
 엑셀 파일 (gas/steam/NItrogen/ARGON 폴더)
     ↓ GET /api/energy-files
-EnergyContext.fileEntries (파일 데이터, 우선순위 높음)
-    + state.entries (localStorage 수동 입력, fallback)
-    ↓ combined() / getFactoryEntries()
-EnergyUsageTab, EnergyUsageSummaryCard, UsageDataModal
+EnergyContext.fileEntries (파일 데이터)
+    DB entries (우선순위 최고)
+    ↓ DB > 파일 순 우선순위, 없으면 빈 배열
+EnergyUsageTab (입력·조회·분석)
 ```
 
-- 파일 데이터가 있으면 수동 입력 데이터를 덮어씀 (공장 단위)
-- localStorage 키: `mdd_energy_v2`
-- 시드 데이터: 2026년 3월 31일치 (앱 최초 실행 시 기본값)
+- DB > 파일 우선순위. 더미 seed 데이터 없음 — 실 데이터만 표시
+- localStorage 키: `mdd_energy_v3` (v3부터 더미 제거)
+- 에너지 입력 탭의 변경사항은 pendingMap에 staging → 저장 버튼 클릭 시 DB + Excel 동시 반영
+- `POST /api/energy/entries/save` → DB upsert/delete + Excel write-back + 캐시 무효화
 
 ---
 
@@ -242,18 +243,72 @@ EnergyUsageTab, EnergyUsageSummaryCard, UsageDataModal
 ## 실행 방법
 
 ```bash
-# 백엔드만
-cd backend
-uvicorn app:app --host 0.0.0.0 --port 5000 --reload
+# 개발 환경
+npm run dev               # 프론트엔드 개발 서버 (포트 5173, API는 localhost:5000 프록시)
+cd backend && uvicorn app:app --host 0.0.0.0 --port 5000 --reload  # 백엔드 단독
 
-# 또는 통합 실행
-python start.py
+# 운영 환경
+python start.py           # 자동으로 Python 패키지 설치 + 빌드 감지 + 서버 시작
+python start.py --port 8080          # 포트 변경
+python start.py --no-build           # 빌드 생략 (dist/ 이미 최신인 경우)
+python start.py --rebuild            # 강제 재빌드
 
-# 프론트엔드 개발 서버 (포트 5173)
-npm run dev
+# 빌드만 별도 실행
+npm run build             # dist/ 폴더 갱신 (FastAPI가 이 폴더를 서빙)
+```
 
-# 프론트엔드 빌드 (FastAPI 서빙용)
-npm run build
+---
+
+## 배포 워크플로우 (회사 서버 이전/업데이트)
+
+### 최초 배포 (새 서버 셋업)
+
+```
+1. 이 폴더 전체를 서버로 복사 (dist/ 포함, node_modules/ 제외)
+2. backend/.env.example → backend/.env 로 복사 후 DATABASE_URL 수정
+3. python start.py
+```
+
+서버에 npm이 없어도 `dist/`가 포함되어 있으면 바로 실행 가능.
+
+### 버전 업데이트 (새 기능·메뉴 추가 후)
+
+**방법 A — 개발 PC에서 빌드 후 복사 (서버에 npm 없는 경우)**
+```
+[개발 PC]
+  1. 코드 수정 + npm run build  (dist/ 갱신)
+  2. 폴더 전체 또는 변경된 파일만 서버에 복사
+
+[서버]
+  3. python update.py --skip-npm   (Python 패키지만 업데이트)
+  4. python start.py --no-build    (재시작)
+```
+
+**방법 B — 서버에서 직접 빌드 (서버에 npm 있는 경우)**
+```
+[서버]
+  1. 새 파일 복사 (소스 포함)
+  2. python update.py    (Python 패키지 + npm build 자동 처리)
+  3. python start.py
+```
+
+### 스크립트 정리
+
+| 파일 | 용도 |
+|------|------|
+| `start.py` | 서버 시작 (포트/호스트 설정, 빌드 자동 감지) |
+| `update.py` | 새 버전 적용 (패키지 업데이트 + 재빌드) |
+| `backend/.env` | 서버별 설정 (DB URL, 포트 등) — 공유 금지 |
+| `backend/.env.example` | 설정 템플릿 — 새 서버 셋업 시 참고 |
+
+### 포트 변경 방법
+
+```
+backend/.env 에 한 줄 추가:
+PORT=8080
+
+또는 실행 시:
+python start.py --port 8080
 ```
 
 ---
@@ -263,3 +318,4 @@ npm run build
 - 신규 탭 추가: `Sidebar.tsx`에 버튼 추가 → `App.tsx`에 `activeTab === 'new-tab'` 분기 추가 → 컴포넌트 파일 생성
 - 신규 DB 테이블: `database.py:init_db()`에 CREATE TABLE 추가 → CRUD 함수 작성 → `app.py`에 라우터 추가
 - 신규 에너지 유틸리티: `EnergyContext.tsx`의 `UtilityKey`, `UTIL_META`, `UTIL_KEYS` 및 `app.py`의 `UTIL_DIR_MAP` 동시 수정
+- 기본 서버 URL: `http://서버IP:5000/ut-mech/` (vite.config.ts의 `base: '/ut-mech/'`와 app.py의 mount 경로가 쌍으로 연결됨 — 변경 시 두 곳 모두 수정 필요)

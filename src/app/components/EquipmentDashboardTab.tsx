@@ -1,3 +1,4 @@
+import React from 'react';
 import {
   AlertTriangle, Activity, Gauge, Zap, Wind, Flame, Fan,
   ShieldAlert, FlaskConical, Droplets, Clock, CheckCircle2,
@@ -354,6 +355,279 @@ function SmallMetric({ item }: { item: Metric }) {
   );
 }
 
+// ─── Schematic diagram helpers ───────────────────────────────────────────────
+
+function SBox({ x, y, w, h, label, sub, col, st }: {
+  x: number; y: number; w: number; h: number;
+  label: string; sub?: string; col: string; st?: 'n' | 'w' | 'd';
+}) {
+  const dc = st === 'w' ? '#ffa500' : st === 'd' ? '#ff4444' : '#00ff88';
+  return (
+    <g>
+      <rect x={x} y={y} width={w} height={h} rx={5} fill={`${col}18`} stroke={`${col}65`} strokeWidth={1.5} />
+      {st && <circle cx={x + w - 9} cy={y + 9} r={3.5} fill={dc} />}
+      <text x={x + w / 2} y={y + h / 2 - (sub ? 7 : 0)} textAnchor="middle" fill="#e8f4ff" fontSize={10.5} fontWeight="600">{label}</text>
+      {sub && <text x={x + w / 2} y={y + h / 2 + 9} textAnchor="middle" fill="#7a9bbf" fontSize={8.5}>{sub}</text>}
+    </g>
+  );
+}
+
+function Arrow({ id, x1, y1, x2, y2, col = '#1e6fff', path }: {
+  id: string; x1: number; y1: number; x2: number; y2: number; col?: string; path?: string;
+}) {
+  const d = path ?? `M${x1},${y1} L${x2},${y2}`;
+  return (
+    <>
+      <defs>
+        <marker id={id} markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+          <polygon points="0,0 7,3.5 0,7" fill={col} />
+        </marker>
+      </defs>
+      <path d={d} fill="none" stroke={col} strokeWidth={1.5} markerEnd={`url(#${id})`} />
+    </>
+  );
+}
+
+function DiagramPanel({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="bg-[#0f2940] border border-[#1e3a5f] rounded-xl overflow-hidden">
+      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-[#1e3a5f]">
+        <span style={{ fontSize: 13 }}>⚙</span>
+        <span className="text-white text-sm font-bold">계통도</span>
+        <span className="text-gray-500 text-xs">System Schematic</span>
+      </div>
+      <div className="p-4">{children}</div>
+    </div>
+  );
+}
+
+function CompressorSchematic() {
+  const W = 108, H = 56, Y = 50, ay = Y + H / 2;
+  const xs = [10, 130, 250, 370, 490, 616];
+  const boxes: [string, string, string, 'n'|'w'|'d'][] = [
+    ['흡기 필터', 'Air Filter',    '#4ecdc4', 'n'],
+    ['압축기',   'Compressor',   '#00d4ff', 'w'],
+    ['후냉각기', 'Aftercooler',  '#ffa500', 'n'],
+    ['Air Dryer','Dew −48°C',   '#00ff88', 'n'],
+    ['리시버탱크','Receiver',   '#95e1d3', 'n'],
+    ['배관 분기', 'Distribution','#a78bfa', 'n'],
+  ];
+  return (
+    <DiagramPanel title="계통도">
+      <svg viewBox="0 0 740 145" className="w-full" style={{ maxHeight: 145 }}>
+        <text x="370" y="16" textAnchor="middle" fill="#3a5470" fontSize={9}>압축공기 공급 계통 (CDA / IA)</text>
+        {xs.slice(0, -1).map((x, i) => (
+          <Arrow key={i} id={`cmp${i}`} x1={x + W} y1={ay} x2={xs[i + 1]} y2={ay} />
+        ))}
+        {boxes.map(([lbl, sub, col, st], i) => (
+          <SBox key={i} x={xs[i]} y={Y} w={W} h={H} label={lbl} sub={sub} col={col} st={st} />
+        ))}
+        <text x="370" y="132" textAnchor="middle" fill="#3a5470" fontSize={8}>
+          흡기 → 압축(7~8 bar) → 냉각 → 제습 → 저장 → 공정 배관 분기
+        </text>
+      </svg>
+    </DiagramPanel>
+  );
+}
+
+function BoilerSchematic() {
+  const W = 104, H = 54;
+  const xs = [10, 126, 242, 366, 490, 614];
+  const y1 = 30, y2 = 138;
+  const ay1 = y1 + H / 2, ay2 = y2 + H / 2;
+  const row1: [string, string, string, 'n'|'w'|'d'][] = [
+    ['급수 탱크', 'Feed Water', '#4ecdc4', 'n'],
+    ['급수 펌프', 'Feed Pump',  '#00d4ff', 'n'],
+    ['탈기기',   'Deaerator',  '#00ff88', 'n'],
+    ['보일러',   'Boiler',     '#ffa500', 'w'],
+    ['스팀 헤더','Steam Hdr',  '#ff6b6b', 'n'],
+    ['공정 부하', 'Load',      '#a78bfa', 'n'],
+  ];
+  return (
+    <DiagramPanel title="계통도">
+      <svg viewBox="0 0 740 230" className="w-full" style={{ maxHeight: 230 }}>
+        <text x="370" y="16" textAnchor="middle" fill="#3a5470" fontSize={9}>보일러 스팀 공급 계통</text>
+        {/* Row1 arrows */}
+        {xs.slice(0, -1).map((x, i) => (
+          <Arrow key={`r1${i}`} id={`bl1${i}`} x1={x + W} y1={ay1} x2={xs[i + 1]} y2={ay1} />
+        ))}
+        {/* LNG → Boiler (from top) */}
+        <Arrow id="blLNG" x1={xs[3] + W / 2} y1={y1} x2={xs[3] + W / 2} y2={y1 - 2}
+          col="#ffa500" path={`M${xs[3]+W/2},${y1-24} L${xs[3]+W/2},${y1}`} />
+        <SBox x={xs[3] + 15} y={y1 - 48} w={74} h={28} label="LNG 연료" col="#ffa500" />
+        {/* Row1 boxes */}
+        {row1.map(([lbl, sub, col, st], i) => (
+          <SBox key={i} x={xs[i]} y={y1} w={W} h={H} label={lbl} sub={sub} col={col} st={st} />
+        ))}
+        {/* Down arrow: 공정부하 → 응축수 회수 */}
+        <Arrow id="blDn" x1={xs[5] + W / 2} y1={y1 + H} x2={xs[5] + W / 2} y2={y2}
+          col="#95e1d3" path={`M${xs[5]+W/2},${y1+H} L${xs[5]+W/2},${y2}`} />
+        {/* Row2 boxes (right to left: 응축수회수, 응축수탱크) */}
+        <SBox x={xs[5]} y={y2} w={W} h={H} label="응축수 회수" sub="Condensate" col="#95e1d3" st="n" />
+        <Arrow id="blR2" x1={xs[5]} y1={ay2} x2={xs[0] + W} y2={ay2} col="#95e1d3"
+          path={`M${xs[5]},${ay2} L${xs[0]+W},${ay2}`} />
+        <SBox x={xs[0]} y={y2} w={W} h={H} label="응축수 탱크" sub="Cond. Tank" col="#4ecdc4" st="n" />
+        {/* Up arrow: 응축수탱크 → 급수탱크 */}
+        <Arrow id="blUp" x1={xs[0] + W / 2} y1={y2} x2={xs[0] + W / 2} y2={y1 + H}
+          col="#4ecdc4" path={`M${xs[0]+W/2},${y2} L${xs[0]+W/2},${y1+H}`} />
+        <text x="370" y="218" textAnchor="middle" fill="#3a5470" fontSize={8}>
+          급수 → 탈기 → 연소(LNG) → 스팀 생산 → 공정 부하 → 응축수 회수
+        </text>
+      </svg>
+    </DiagramPanel>
+  );
+}
+
+function PCWICWSchematic() {
+  const W = 110, H = 54;
+  const y1 = 30, y2 = 140;
+  const ay1 = y1 + H / 2, ay2 = y2 + H / 2;
+  const xs = [10, 136, 262, 406, 530];
+  return (
+    <DiagramPanel title="계통도">
+      <svg viewBox="0 0 660 230" className="w-full" style={{ maxHeight: 230 }}>
+        <text x="330" y="16" textAnchor="middle" fill="#3a5470" fontSize={9}>PCW / ICW 냉각수 순환 계통</text>
+        {/* Top row */}
+        <SBox x={xs[0]} y={y1} w={W} h={H} label="냉동기/냉각탑" sub="Chiller/CT" col="#00d4ff" st="n" />
+        <Arrow id="pi0" x1={xs[0]+W} y1={ay1} x2={xs[1]} y2={ay1} />
+        <SBox x={xs[1]} y={y1} w={W} h={H} label="순환 펌프" sub="Circ. Pump" col="#4ecdc4" st="n" />
+        <Arrow id="pi1" x1={xs[1]+W} y1={ay1} x2={xs[2]} y2={ay1} />
+        <SBox x={xs[2]} y={y1} w={W} h={H} label="공급 헤더" sub="Supply Hdr" col="#00ff88" st="n" />
+        {/* Down arrow to equipment */}
+        <Arrow id="piDn1" x1={xs[2]+W/2} y1={y1+H} x2={xs[2]+W/2} y2={y2}
+          col="#00ff88" path={`M${xs[2]+W/2},${y1+H} L${xs[2]+W/2},${y2}`} />
+        {/* Bottom row */}
+        <SBox x={xs[2]} y={y2} w={W} h={H} label="PCW 장비군" sub="Process Cool" col="#00ff88" st="w" />
+        <Arrow id="pi2" x1={xs[2]+W} y1={ay2} x2={xs[3]} y2={ay2} />
+        <SBox x={xs[3]} y={y2} w={W} h={H} label="ICW 장비군" sub="Inner Cool" col="#4ecdc4" st="n" />
+        <Arrow id="pi3" x1={xs[3]+W} y1={ay2} x2={xs[4]} y2={ay2} />
+        <SBox x={xs[4]} y={y2} w={W} h={H} label="환수 헤더" sub="Return Hdr" col="#ffa500" st="n" />
+        {/* Up arrow back */}
+        <Arrow id="piUp" x1={xs[4]+W/2} y1={y2} x2={xs[4]+W/2} y2={y1+H}
+          col="#ffa500" path={`M${xs[4]+W/2},${y2} L${xs[4]+W/2},${y1+H}`} />
+        <SBox x={xs[3]} y={y1} w={W} h={H} label="스트레이너" sub="Strainer" col="#95e1d3" st="n" />
+        <Arrow id="pi4" x1={xs[4]} y1={ay1} x2={xs[3]+W} y2={ay1} col="#ffa500" />
+        <Arrow id="pi5" x1={xs[3]} y1={ay1} x2={xs[4]+W/2} y2={ay1} col="#ffa500"
+          path={`M${xs[3]},${ay1} L${xs[2]+W+4},${ay1}`} />
+        <text x="330" y="218" textAnchor="middle" fill="#3a5470" fontSize={8}>
+          냉동기/냉각탑 → 공급(22~24°C) → 장비 냉각 → 환수(28~30°C) → 냉동기 복귀
+        </text>
+      </svg>
+    </DiagramPanel>
+  );
+}
+
+function PVACSchematic() {
+  const W = 110, H = 56, Y = 50, ay = Y + H / 2;
+  const xs = [10, 140, 270, 400, 540];
+  return (
+    <DiagramPanel title="계통도">
+      <svg viewBox="0 0 680 148" className="w-full" style={{ maxHeight: 148 }}>
+        <text x="340" y="16" textAnchor="middle" fill="#3a5470" fontSize={9}>진공 / 위험가스 배기 계통 (P-VAC / H-VAC)</text>
+        {xs.slice(0, -1).map((x, i) => (
+          <Arrow key={i} id={`pv${i}`} x1={x + W} y1={ay} x2={xs[i + 1]} y2={ay} col="#a78bfa" />
+        ))}
+        <SBox x={xs[0]} y={Y} w={W} h={H} label="공정 장비" sub="Process Equip" col="#4ecdc4" st="n" />
+        <SBox x={xs[1]} y={Y} w={W} h={H} label="흡입 Duct" sub="Suction Duct" col="#a78bfa" st="n" />
+        <SBox x={xs[2]} y={Y} w={W} h={H} label="진공 펌프" sub="Vacuum Pump" col="#00d4ff" st="d" />
+        <SBox x={xs[3]} y={Y} w={W} h={H} label="Scrubber" sub="처리 설비"   col="#00ff88" st="n" />
+        <SBox x={xs[4]} y={Y} w={W} h={H} label="배기구/Stack" sub="Exhaust"  col="#95e1d3" st="n" />
+        {/* Seal Water arrow from bottom to pump */}
+        <Arrow id="pvSeal" x1={xs[2]+W/2} y1={Y+H+30} x2={xs[2]+W/2} y2={Y+H}
+          col="#00d4ff" path={`M${xs[2]+W/2},${Y+H+28} L${xs[2]+W/2},${Y+H}`} />
+        <SBox x={xs[2]-5} y={Y+H+5} w={W+10} h={26} label="Seal Water 공급" col="#00d4ff" />
+        <text x="340" y="142" textAnchor="middle" fill="#3a5470" fontSize={8}>
+          공정 위험가스 → 흡입 → 진공 펌프 → 습식 Scrubber 무해화 → Stack 배기
+        </text>
+      </svg>
+    </DiagramPanel>
+  );
+}
+
+function ExhaustFanSchematic() {
+  const W = 106, H = 56, Y = 50, ay = Y + H / 2;
+  const xs = [10, 132, 254, 376, 510, 628];
+  return (
+    <DiagramPanel title="계통도">
+      <svg viewBox="0 0 750 148" className="w-full" style={{ maxHeight: 148 }}>
+        <text x="375" y="16" textAnchor="middle" fill="#3a5470" fontSize={9}>배기 Fan 계통 (산/알칼리/유기 배기)</text>
+        {xs.slice(0, -1).map((x, i) => (
+          <Arrow key={i} id={`ef${i}`} x1={x + W} y1={ay} x2={xs[i + 1]} y2={ay} col="#f97316" />
+        ))}
+        <SBox x={xs[0]} y={Y} w={W} h={H} label="공정 배기" sub="Process Gas"  col="#ff6b6b" st="n" />
+        <SBox x={xs[1]} y={Y} w={W} h={H} label="흡입 후드" sub="Inlet Hood"   col="#ffa500" st="n" />
+        <SBox x={xs[2]} y={Y} w={W} h={H} label="배기 Duct" sub="Exhaust Duct" col="#f97316" st="n" />
+        <SBox x={xs[3]} y={Y} w={W} h={H} label="배기 Fan"  sub="VFD 52Hz"     col="#f97316" st="w" />
+        <SBox x={xs[4]} y={Y} w={W} h={H} label="Scrubber"  sub="습식 처리"    col="#00ff88" st="n" />
+        <SBox x={xs[5]} y={Y} w={W} h={H} label="Stack"     sub="대기 방출"    col="#95e1d3" st="n" />
+        {/* VFD label below fan */}
+        <text x={xs[3]+W/2} y={Y+H+22} textAnchor="middle" fill="#f97316" fontSize={8}>Damper 68%</text>
+        <text x="375" y="140" textAnchor="middle" fill="#3a5470" fontSize={8}>
+          공정 위험가스 → 후드 흡입 → Duct 이송 → Fan 승압 → 무해화 → Stack 방출
+        </text>
+      </svg>
+    </DiagramPanel>
+  );
+}
+
+function GasDetectorSchematic() {
+  const H = 54, Y = 50;
+  return (
+    <DiagramPanel title="계통도">
+      <svg viewBox="0 0 740 230" className="w-full" style={{ maxHeight: 230 }}>
+        <text x="370" y="16" textAnchor="middle" fill="#3a5470" fontSize={9}>가스 감지기 신호 처리 및 대응 계통</text>
+        {/* Zone boxes */}
+        {[['Zone P1', 'H₂', '#00d4ff', 'n'], ['Zone P2', 'SiH₄', '#ff4444', 'd'], ['Zone P3', 'NH₃', '#ffa500', 'w']].map(
+          ([lbl, sub, col, st], i) => (
+            <SBox key={i} x={10 + i * 140} y={Y} w={120} h={H}
+              label={lbl as string} sub={sub as string} col={col as string} st={st as 'n'|'w'|'d'} />
+          )
+        )}
+        {/* Arrows from zones down to panel */}
+        {[70, 210, 350].map((cx, i) => (
+          <Arrow key={i} id={`gd${i}`} x1={cx} y1={Y + H} x2={cx} y2={148}
+            col={['#00d4ff','#ff4444','#ffa500'][i]}
+            path={`M${cx},${Y+H} L${cx},${148}`} />
+        ))}
+        {/* Merge line */}
+        <line x1="70" y1="148" x2="420" y2="148" stroke="#1e6fff" strokeWidth={1.5} />
+        <Arrow id="gdP" x1={420} y1={148} x2={490} y2={148} />
+        {/* Control panel */}
+        <SBox x={490} y={125} w={120} h={H} label="제어반/패널" sub="Gas Panel" col="#1e6fff" st="n" />
+        {/* Alarm */}
+        <Arrow id="gdA" x1={610} y1={148} x2={640} y2={148} col="#ff4444" />
+        <SBox x={640} y={125} w={90} h={H} label="알람 발생" sub="Alarm" col="#ff4444" st="d" />
+        {/* Interlock actions below */}
+        {[['배기Fan 기동', '#f97316'], ['차단 밸브', '#ffa500'], ['경광등/방송', '#ff4444']].map(
+          ([lbl, col], i) => (
+            <g key={i}>
+              <Arrow id={`gdI${i}`} x1={685} y1={125+H} x2={150 + i*220} y2={190}
+                col={col as string}
+                path={`M${685},${125+H} L${150+i*220},${190}`} />
+              <SBox x={90 + i*220} y={190} w={120} h={40} label={lbl as string} col={col as string} />
+            </g>
+          )
+        )}
+        <text x="370" y="222" textAnchor="middle" fill="#3a5470" fontSize={8}>
+          Zone 감지 → 신호 전송 → 제어반 판단 → 알람 발령 → 설비 인터록 동작
+        </text>
+      </svg>
+    </DiagramPanel>
+  );
+}
+
+function SchematicDiagram({ type }: { type: EquipmentDashboardKey }) {
+  if (type === 'compressor')       return <CompressorSchematic />;
+  if (type === 'boiler-dashboard') return <BoilerSchematic />;
+  if (type === 'pcw-icw')          return <PCWICWSchematic />;
+  if (type === 'pvac-hvac')        return <PVACSchematic />;
+  if (type === 'exhaust-fan')      return <ExhaustFanSchematic />;
+  if (type === 'gas-detector')     return <GasDetectorSchematic />;
+  return null;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 export function EquipmentDashboardTab({ type }: { type: EquipmentDashboardKey }) {
   const cfg = configs[type];
   const Icon = cfg.icon;
@@ -380,6 +654,8 @@ export function EquipmentDashboardTab({ type }: { type: EquipmentDashboardKey })
       <div className="grid grid-cols-4 gap-3">
         {cfg.metrics.map(m => <MetricCard key={m.label} metric={m} />)}
       </div>
+
+      <SchematicDiagram type={type} />
 
       <div className="grid grid-cols-3 gap-4">
         <div className="col-span-2 bg-[#0f2940] border border-[#1e3a5f] rounded-xl overflow-hidden">

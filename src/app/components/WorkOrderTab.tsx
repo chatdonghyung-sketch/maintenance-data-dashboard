@@ -48,6 +48,8 @@ function statusBg(s: string) {
 
 const PAGE_SIZE = 50;
 
+const STATUS_CYCLE = ['작성대기', '작성중', '확정', '완료', '보류'];
+
 export function WorkOrderTab() {
   const [kpi, setKpi]                       = useState<KPI>({ total: 0, confirmed: 0, drafting: 0, pending: 0 });
   const [rows, setRows]                     = useState<WorkOrder[]>([]);
@@ -57,6 +59,11 @@ export function WorkOrderTab() {
   const [uploading, setUploading]           = useState(false);
   const [uploadMsg, setUploadMsg]           = useState('');
   const [filterOpts, setFilterOpts]         = useState<FilterOptions>({ departments: [], work_types: [], equip_types: [], locations: [], workers: [], wo_statuses: [] });
+  const [showAddPanel, setShowAddPanel]     = useState(false);
+  const [addForm, setAddForm]               = useState({
+    wo_no:'', work_type:'', work_name:'', equip_code:'', equip_name:'', equip_type:'',
+    location:'', start_date:'', end_date:'', department:'', worker:'', writer:'', wo_status:'작성중'
+  });
 
   // Filters
   const [startDate, setStartDate]   = useState('');
@@ -121,6 +128,44 @@ export function WorkOrderTab() {
     loadData(1);
     loadKpi();
   }, []);
+
+  const fetchData = useCallback(() => {
+    loadData(page);
+    loadKpi();
+  }, [loadData, loadKpi, page]);
+
+  const handleStatusChange = async (wo_no: string, currentStatus: string) => {
+    const idx = STATUS_CYCLE.indexOf(currentStatus.replace(/\s/g, ''));
+    const next = STATUS_CYCLE[(idx + 1) % STATUS_CYCLE.length];
+    try {
+      await fetch(`/api/work-orders/${encodeURIComponent(wo_no)}/status`, {
+        method: 'PATCH',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({status: next}),
+      });
+      loadData(page);
+      loadKpi();
+    } catch {}
+  };
+
+  const handleAddWorkOrder = async () => {
+    try {
+      const wo_no = addForm.wo_no || `WO-${Date.now()}`;
+      const res = await fetch('/api/work-orders/single', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({...addForm, wo_no}),
+      });
+      if (!res.ok) throw new Error();
+      setShowAddPanel(false);
+      setAddForm({wo_no:'', work_type:'', work_name:'', equip_code:'', equip_name:'', equip_type:'',
+        location:'', start_date:'', end_date:'', department:'', worker:'', writer:'', wo_status:'작성중'});
+      loadData(1);
+      loadKpi();
+    } catch {
+      alert('등록 실패');
+    }
+  };
 
   const handleSearch = () => {
     loadData(1);
@@ -193,6 +238,9 @@ export function WorkOrderTab() {
           >
             <Upload size={13} />
             {uploading ? '업로드 중...' : 'Excel 업로드'}
+          </button>
+          <button onClick={() => setShowAddPanel(true)} style={{background:'#1e6fff',color:'white',border:'none',borderRadius:6,padding:'6px 14px',fontSize:12,cursor:'pointer',display:'flex',alignItems:'center',gap:6}}>
+            + 새 작업 등록
           </button>
         </div>
       </div>
@@ -341,7 +389,10 @@ export function WorkOrderTab() {
                   <td className="px-3 py-2 text-gray-300 whitespace-nowrap">{r.worker}</td>
                   <td className="px-3 py-2 text-gray-400 whitespace-nowrap">{r.writer}</td>
                   <td className="px-3 py-2 whitespace-nowrap">
-                    <span className="px-2 py-0.5 rounded text-[10px] font-bold" style={statusBg(r.wo_status)}>
+                    <span onClick={() => handleStatusChange(r.wo_no, r.wo_status)}
+                      className="px-2 py-0.5 rounded text-[10px] font-bold"
+                      style={{...statusBg(r.wo_status), cursor:'pointer'}}
+                      title="클릭하여 상태 변경">
                       {r.wo_status}
                     </span>
                   </td>
@@ -371,6 +422,57 @@ export function WorkOrderTab() {
           </div>
         )}
       </div>
+
+      {/* 새 작업 등록 슬라이드 패널 */}
+      {showAddPanel && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:8000}} onClick={() => setShowAddPanel(false)}>
+          <div style={{position:'fixed',right:0,top:0,bottom:0,width:420,background:'#0b1628',borderLeft:'1px solid #1e3a5f',padding:24,overflowY:'auto'}} onClick={e => e.stopPropagation()}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
+              <span style={{color:'white',fontWeight:700,fontSize:15}}>새 작업 등록</span>
+              <button onClick={() => setShowAddPanel(false)} style={{background:'none',border:'none',color:'#7a9bbf',cursor:'pointer',fontSize:18}}>✕</button>
+            </div>
+            <div style={{display:'flex',flexDirection:'column',gap:12}}>
+              {[
+                {label:'WO번호', key:'wo_no', placeholder:'자동채번 (비우면 자동)'},
+                {label:'작업명', key:'work_name', placeholder:''},
+                {label:'설비코드', key:'equip_code', placeholder:''},
+                {label:'설비명', key:'equip_name', placeholder:''},
+                {label:'작업부서', key:'department', placeholder:''},
+                {label:'작업자', key:'worker', placeholder:''},
+                {label:'작성자', key:'writer', placeholder:''},
+                {label:'시작일', key:'start_date', type:'date', placeholder:''},
+                {label:'종료일', key:'end_date', type:'date', placeholder:''},
+              ].map(f => (
+                <div key={f.key}>
+                  <div style={{color:'#7a9bbf',fontSize:11,marginBottom:4}}>{f.label}</div>
+                  <input type={f.type || 'text'} value={addForm[f.key as keyof typeof addForm] || ''} placeholder={f.placeholder || ''}
+                    onChange={e => setAddForm(p => ({...p, [f.key]: e.target.value}))}
+                    style={{width:'100%',background:'#07111e',border:'1px solid #1e3a5f',color:'#e8f4ff',borderRadius:6,padding:'7px 10px',fontSize:12,boxSizing:'border-box'}} />
+                </div>
+              ))}
+              {[
+                {label:'작업유형', key:'work_type', options:['예방정비','사후정비','개선','점검','기타']},
+                {label:'설비종류', key:'equip_type', options:['냉동기','컴프레서','보일러','공조기','ICW펌프','PCW펌프','배기팬','P/V','기타']},
+                {label:'위치', key:'location', options:['P1','P2','P3','신공장','Utility','공통']},
+                {label:'WO상태', key:'wo_status', options:['작성중','작성대기','확정','완료','보류']},
+              ].map(f => (
+                <div key={f.key}>
+                  <div style={{color:'#7a9bbf',fontSize:11,marginBottom:4}}>{f.label}</div>
+                  <select value={addForm[f.key as keyof typeof addForm] || ''} onChange={e => setAddForm(p => ({...p, [f.key]: e.target.value}))}
+                    style={{width:'100%',background:'#07111e',border:'1px solid #1e3a5f',color:'#e8f4ff',borderRadius:6,padding:'7px 10px',fontSize:12}}>
+                    <option value=''>선택</option>
+                    {f.options.map(o => <option key={o} value={o}>{o}</option>)}
+                  </select>
+                </div>
+              ))}
+            </div>
+            <div style={{marginTop:20,display:'flex',gap:8}}>
+              <button onClick={handleAddWorkOrder} style={{flex:1,background:'#1e6fff',color:'white',border:'none',borderRadius:6,padding:'10px',fontSize:13,cursor:'pointer',fontWeight:600}}>등록</button>
+              <button onClick={() => setShowAddPanel(false)} style={{flex:1,background:'#1e3a5f',color:'#e8f4ff',border:'none',borderRadius:6,padding:'10px',fontSize:13,cursor:'pointer'}}>취소</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

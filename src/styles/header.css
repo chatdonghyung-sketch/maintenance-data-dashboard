@@ -6,6 +6,103 @@
   --fd:'Rajdhani',sans-serif; --fb:'Noto Sans KR',sans-serif; --fm:'Share Tech Mono',monospace;
 }
 
+/* Grid overlay */
+body::before {
+  content: ''; position: fixed; inset: 0;
+  background-image:
+    linear-gradient(rgba(30,111,255,.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(30,111,255,.025) 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events: none; z-index: 0;
+}
+
+/* ── Main content scrollbar ─────────────────────────────── */
+.main-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(20, 60, 110, 0.7) transparent;
+}
+.main-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+.main-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.main-scroll::-webkit-scrollbar-thumb {
+  background: rgba(20, 60, 110, 0.8);
+  border-radius: 2px;
+}
+.main-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 180, 220, 0.45);
+}
+
+/* ── Sidebar scrollbar ──────────────────────────────────── */
+.sidebar-nav {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(20, 60, 110, 0.7) transparent;
+}
+.sidebar-nav::-webkit-scrollbar {
+  width: 3px;
+}
+.sidebar-nav::-webkit-scrollbar-track {
+  background: transparent;
+}
+.sidebar-nav::-webkit-scrollbar-thumb {
+  background: rgba(20, 60, 110, 0.8);
+  border-radius: 2px;
+}
+.sidebar-nav::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 180, 220, 0.45);
+}
+
+/* ── Sidebar ────────────────────────────────────────────── */
+.ns {
+  font-size: 9px; font-weight: 700; letter-spacing: 2px;
+  color: #a8c5e8; padding: 12px 18px 5px;
+  text-transform: uppercase; user-select: none;
+}
+.ni {
+  display: flex; align-items: center; gap: 9px;
+  padding: 8px 18px; font-size: 12px; color: var(--t1);
+  cursor: pointer; border-left: 2px solid transparent;
+  width: 100%; background: none;
+  border-top: none; border-right: none; border-bottom: none;
+  transition: background .15s, color .15s, border-color .15s;
+  text-align: left; font-family: var(--fb); white-space: nowrap;
+}
+.ni:hover { background: rgba(0,212,255,.06); color: var(--cy); border-left-color: rgba(0,212,255,.4); }
+.ni.ac   { color: var(--cy); background: rgba(0,212,255,.12); border-left-color: var(--cy); font-weight: 500; }
+.ni-sub {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 18px 6px 38px; font-size: 11px; color: var(--t2);
+  cursor: pointer; border-left: 2px solid transparent;
+  width: 100%; background: none;
+  border-top: none; border-right: none; border-bottom: none;
+  transition: background .15s, color .15s, border-color .15s;
+  text-align: left; font-family: var(--fb); white-space: nowrap;
+}
+.ni-sub:hover { background: rgba(0,212,255,.05); color: var(--t1); border-left-color: rgba(0,212,255,.25); }
+.ni-sub.ac   { color: var(--cy); background: rgba(0,212,255,.09); border-left-color: var(--cy); font-weight: 500; }
+
+/* ── Panel / Card ───────────────────────────────────────── */
+.pn { background: var(--bg3); border: 1px solid var(--br); border-radius: 9px; overflow: hidden; }
+.ph {
+  padding: 9px 13px; border-bottom: 1px solid var(--br);
+  background: rgba(30,111,255,.025);
+  display: flex; align-items: center; justify-content: space-between;
+}
+
+/* KPI card — 2px glowing top-accent */
+.kpi {
+  background: var(--bg3); border: 1px solid var(--br);
+  border-radius: 8px; padding: 11px 13px;
+  position: relative; overflow: hidden;
+}
+.kpi::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  background: var(--kc, var(--bl));
+  box-shadow: 0 0 8px var(--kc, var(--bl));
+}
+
 .hdr {
   position: fixed; top: 0; left: 0; right: 0; height: 54px;
   background: rgba(6,12,26,.96);

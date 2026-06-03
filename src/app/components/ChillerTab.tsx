@@ -254,67 +254,80 @@ export function ChillerTab() {
       )}
 
       {/* 냉동기 계통도 */}
-      <div className="bg-[#0f2940] border border-[#1e3a5f] rounded-xl p-5">
-        <h3 className="text-white text-sm font-bold mb-4">냉동기 #{selectedChiller} 냉매 사이클 계통도</h3>
-        <svg viewBox="0 0 820 320" className="w-full">
+      <div className="bg-[#0f2940] border border-[#1e3a5f] rounded-xl overflow-hidden">
+        <div className="flex items-center justify-between border-b border-[#1e3a5f] px-5 py-3">
+          <div className="flex items-center gap-2">
+            <span className="h-2 w-2 rounded-full bg-[#00d4ff]" />
+            <h3 className="text-white text-sm font-bold">계통도</h3>
+            <span className="text-[#6b8aae] text-xs">System Schematic</span>
+          </div>
+          <div className={`px-2.5 py-1 rounded-full border text-[10px] font-bold ${statusCfg[chillerStatus[selectedChiller]].bg} ${statusCfg[chillerStatus[selectedChiller]].border} ${statusCfg[chillerStatus[selectedChiller]].text}`}>
+            CH-{String(selectedChiller).padStart(2, '0')} · {statusCfg[chillerStatus[selectedChiller]].label}
+          </div>
+        </div>
+        <svg viewBox="0 0 1040 190" className="w-full">
           <defs>
+            <pattern id="minorGrid" width="24" height="24" patternUnits="userSpaceOnUse">
+              <path d="M24 0H0V24" fill="none" stroke="#1e3a5f" strokeOpacity="0.24" strokeWidth="1" />
+            </pattern>
             {[
-              { id: 'ab', color: '#00d4ff' }, { id: 'ar', color: '#ff4444' },
-              { id: 'ao', color: '#ffa500' }, { id: 'ag', color: '#00ff88' }, { id: 'ap', color: '#ff6b9d' },
+              { id: 'ag', color: '#00ff88' }, { id: 'ar', color: '#ff4444' },
+              { id: 'ao', color: '#ffa500' }, { id: 'ab', color: '#00d4ff' },
+              { id: 'ap', color: '#ff6b9d' },
             ].map(m => (
-              <marker key={m.id} id={m.id} markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
-                <path d="M0,0 L0,6 L8,3 z" fill={m.color} />
+              <marker key={m.id} id={m.id} markerWidth="9" markerHeight="9" refX="8" refY="4" orient="auto">
+                <path d="M0,0 L0,8 L9,4 z" fill={m.color} />
               </marker>
             ))}
           </defs>
 
-          {/* 증발기 */}
-          <rect x="40" y="190" width="140" height="90" rx="10" fill="#07111e" stroke="#00ff88" strokeWidth="2.5" />
-          <text x="110" y="228" fill="#00ff88" fontSize="13" textAnchor="middle" fontWeight="bold">증발기</text>
-          <text x="110" y="248" fill="#9ca3af" fontSize="10" textAnchor="middle">Evaporator</text>
-          <text x="110" y="268" fill="#00ff88" fontSize="11" textAnchor="middle">{(5 + selectedChiller * 0.3).toFixed(1)}°C</text>
+          <rect width="1040" height="190" fill="#0b2238" />
+          <rect width="1040" height="190" fill="url(#minorGrid)" opacity="0.55" />
+          <text x="520" y="40" fill="#3f5d7c" fontSize="10" textAnchor="middle">냉매 순환 계통 (Refrigerant Cycle)</text>
 
-          {/* 압축기 */}
-          <rect x="40" y="40" width="140" height="90" rx="10" fill="#07111e" stroke="#ff4444" strokeWidth="2.5" />
-          <text x="110" y="78" fill="#ff4444" fontSize="13" textAnchor="middle" fontWeight="bold">압축기</text>
-          <text x="110" y="98" fill="#9ca3af" fontSize="10" textAnchor="middle">Compressor</text>
-          <text x="110" y="118" fill="#ff4444" fontSize="11" textAnchor="middle">{(85 + selectedChiller * 2).toFixed(0)}°C</text>
+          <path d="M224,94 H284" stroke="#00ff88" strokeWidth="2.2" markerEnd="url(#ag)" />
+          <path d="M392,94 H452" stroke="#ff4444" strokeWidth="2.2" markerEnd="url(#ar)" />
+          <path d="M560,94 H620" stroke="#ffa500" strokeWidth="2.2" markerEnd="url(#ao)" />
+          <path d="M728,94 H788" stroke="#00d4ff" strokeWidth="2.2" markerEnd="url(#ab)" />
+          <path d="M848,126 C848,154 164,154 164,126" stroke="#00d4ff" strokeWidth="1.8" fill="none" opacity="0.75" markerEnd="url(#ab)" />
+          <path d="M560,76 C612,64 646,60 704,74" stroke="#ff6b9d" strokeWidth="1.8" fill="none" strokeDasharray="7,5" markerEnd="url(#ap)" />
 
-          {/* 응축기 */}
-          <rect x="400" y="40" width="140" height="90" rx="10" fill="#07111e" stroke="#ffa500" strokeWidth="2.5" />
-          <text x="470" y="78" fill="#ffa500" fontSize="13" textAnchor="middle" fontWeight="bold">응축기</text>
-          <text x="470" y="98" fill="#9ca3af" fontSize="10" textAnchor="middle">Condenser</text>
-          <text x="470" y="118" fill="#ffa500" fontSize="11" textAnchor="middle">{(42 + selectedChiller * 1.5).toFixed(0)}°C</text>
+          <g>
+            <rect x="104" y="62" width="120" height="64" rx="5" fill="#123346" stroke="#00ff88" strokeOpacity="0.55" strokeWidth="1.5" />
+            <circle cx="214" cy="74" r="4" fill="#00ff88" />
+            <text x="164" y="87" fill="#ffffff" fontSize="13" textAnchor="middle" fontWeight="700">증발기</text>
+            <text x="164" y="107" fill="#83a8c9" fontSize="10" textAnchor="middle">Evaporator · {(5 + selectedChiller * 0.3).toFixed(1)}°C</text>
+          </g>
 
-          {/* 팽창밸브 */}
-          <rect x="400" y="190" width="140" height="90" rx="10" fill="#07111e" stroke="#00d4ff" strokeWidth="2.5" />
-          <text x="470" y="228" fill="#00d4ff" fontSize="13" textAnchor="middle" fontWeight="bold">팽창밸브</text>
-          <text x="470" y="248" fill="#9ca3af" fontSize="10" textAnchor="middle">Expansion Valve</text>
-          <text x="470" y="268" fill="#00d4ff" fontSize="11" textAnchor="middle">{(8 + selectedChiller * 0.5).toFixed(1)}°C</text>
+          <g>
+            <rect x="284" y="62" width="108" height="64" rx="5" fill="#0c3448" stroke="#00a8d8" strokeOpacity="0.75" strokeWidth="1.5" />
+            <circle cx="382" cy="74" r="4" fill="#ffa500" />
+            <text x="338" y="87" fill="#ffffff" fontSize="13" textAnchor="middle" fontWeight="700">압축기</text>
+            <text x="338" y="107" fill="#83a8c9" fontSize="10" textAnchor="middle">Compressor · {(85 + selectedChiller * 2).toFixed(0)}°C</text>
+          </g>
 
-          {/* 냉각수 */}
-          <rect x="650" y="120" width="140" height="80" rx="10" fill="#07111e" stroke="#ff6b9d" strokeWidth="2" strokeDasharray="6,3" />
-          <text x="720" y="155" fill="#ff6b9d" fontSize="12" textAnchor="middle" fontWeight="bold">냉각수</text>
-          <text x="720" y="173" fill="#9ca3af" fontSize="10" textAnchor="middle">Cooling Water</text>
-          <text x="720" y="189" fill="#ff6b9d" fontSize="10" textAnchor="middle">{250 + selectedChiller * 10} m³/h</text>
+          <g>
+            <rect x="452" y="62" width="108" height="64" rx="5" fill="#302b1f" stroke="#ffa500" strokeOpacity="0.62" strokeWidth="1.5" />
+            <circle cx="550" cy="74" r="4" fill="#00ff88" />
+            <text x="506" y="87" fill="#ffffff" fontSize="13" textAnchor="middle" fontWeight="700">응축기</text>
+            <text x="506" y="107" fill="#83a8c9" fontSize="10" textAnchor="middle">Condenser · {(42 + selectedChiller * 1.5).toFixed(0)}°C</text>
+          </g>
 
-          {/* 화살표 연결 */}
-          {/* 증발기 → 압축기 */}
-          <path d="M110,190 L110,130" stroke="#00ff88" strokeWidth="2.5" fill="none" markerEnd="url(#ag)" />
-          {/* 압축기 → 응축기 */}
-          <path d="M180,85 L400,85" stroke="#ff4444" strokeWidth="2.5" fill="none" markerEnd="url(#ar)" />
-          {/* 응축기 → 팽창밸브 */}
-          <path d="M470,130 L470,190" stroke="#ffa500" strokeWidth="2.5" fill="none" markerEnd="url(#ao)" />
-          {/* 팽창밸브 → 증발기 */}
-          <path d="M400,235 L180,235" stroke="#00d4ff" strokeWidth="2.5" fill="none" markerEnd="url(#ab)" />
-          {/* 응축기 → 냉각수 */}
-          <path d="M540,85 L650,160" stroke="#ff6b9d" strokeWidth="2" fill="none" strokeDasharray="6,3" markerEnd="url(#ap)" />
+          <g>
+            <rect x="620" y="62" width="108" height="64" rx="5" fill="#113a3d" stroke="#00d4ff" strokeOpacity="0.65" strokeWidth="1.5" />
+            <circle cx="718" cy="74" r="4" fill="#00ff88" />
+            <text x="674" y="87" fill="#ffffff" fontSize="13" textAnchor="middle" fontWeight="700">팽창밸브</text>
+            <text x="674" y="107" fill="#83a8c9" fontSize="10" textAnchor="middle">Expansion · {(8 + selectedChiller * 0.5).toFixed(1)}°C</text>
+          </g>
 
-          {/* 라벨 */}
-          <text x="110" y="165" fill="#00ff88" fontSize="9" textAnchor="middle">↑ 저압 냉매 기체</text>
-          <text x="290" y="72" fill="#ff4444" fontSize="9" textAnchor="middle">고압 냉매 기체 →</text>
-          <text x="470" y="175" fill="#ffa500" fontSize="9" textAnchor="middle">↓ 고압 냉매 액체</text>
-          <text x="290" y="220" fill="#00d4ff" fontSize="9" textAnchor="middle">← 저압 냉매 액체</text>
+          <g>
+            <rect x="788" y="62" width="128" height="64" rx="5" fill="#1f2946" stroke="#ff6b9d" strokeOpacity="0.55" strokeWidth="1.5" strokeDasharray="6,4" />
+            <circle cx="906" cy="74" r="4" fill="#ff6b9d" />
+            <text x="852" y="87" fill="#ffffff" fontSize="13" textAnchor="middle" fontWeight="700">냉각수</text>
+            <text x="852" y="107" fill="#83a8c9" fontSize="10" textAnchor="middle">Cooling Water · {250 + selectedChiller * 10} m³/h</text>
+          </g>
+
+          <text x="520" y="146" fill="#496b8c" fontSize="10" textAnchor="middle">저압 기체 → 고온/고압 기체 → 고압 액체 → 감압 팽창 → 증발기 복귀</text>
         </svg>
       </div>
     </div>

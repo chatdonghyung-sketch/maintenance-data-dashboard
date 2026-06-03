@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { Header } from "./components/Header";
 import { UsageChart } from "./components/UsageChart";
@@ -25,6 +25,8 @@ import { WorkOrderTab } from './components/WorkOrderTab';
 import { CostManagementTab } from "./components/CostManagementTab";
 import { InventoryManagementTab } from "./components/InventoryManagementTab";
 import { ComplianceManagementTab } from "./components/ComplianceManagementTab";
+import { EquipmentManagementTab } from "./components/EquipmentManagementTab";
+import { PreventiveInspectionTab } from "./components/PreventiveInspectionTab";
 import {
   AlertTriangle, AlertCircle, FileText, RefreshCw,
   Brain, Calendar, Wrench, ChevronRight, Activity, CheckCircle2,
@@ -79,10 +81,21 @@ function App() {
   const [anomalyType, setAnomalyType] = useState<"warning" | "danger">("danger");
   const [usageModalOpen, setUsageModalOpen] = useState(false);
   const [selectedUsageKey, setSelectedUsageKey] = useState<UtilityKey | null>(null);
+  const [hmiInitialTag, setHmiInitialTag] = useState('');
   const [anomalyCount] = useState(2);
   const [warningCount] = useState(5);
   const [aiPredictionCount] = useState(4);
   const [alarmCount] = useState(8);
+  const [liveAlarmCount, setLiveAlarmCount] = useState(0);
+  const [dashSummary, setDashSummary] = useState<{wo_total:number;wo_pending:number;wo_drafting:number;wo_confirmed:number;alarm_completed:number} | null>(null);
+
+  useEffect(() => {
+    if (activeTab !== 'dashboard') return;
+    fetch('/api/dashboard/summary')
+      .then(r => r.json())
+      .then(setDashSummary)
+      .catch(() => {});
+  }, [activeTab]);
 
   // 가장 최신 연월 자동 감지
   const latestYM = useMemo(() => {
@@ -122,7 +135,7 @@ function App() {
         anomalyCount={anomalyCount}
         warningCount={warningCount}
         aiPredictionCount={aiPredictionCount}
-        alarmCount={alarmCount}
+        alarmCount={liveAlarmCount}
       />
 
       <div className="flex-1 flex flex-col overflow-hidden">
@@ -140,7 +153,7 @@ function App() {
           </div>
         ) : (
           <div
-            className="flex-1 overflow-y-auto"
+            className="flex-1 overflow-y-auto main-scroll"
             style={{ marginTop: '54px', fontFamily: '"Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}
           >
             <div className="p-5 space-y-4">
@@ -168,328 +181,326 @@ function App() {
                     </div>
                   </div>
 
-                  {/* ⑤ 에너지 사용량 — 최상단으로 이동 */}
-                  <div className="bg-[#0f2940] border border-[#1e3a5f] rounded-xl p-4">
-                    <div className="flex items-center justify-between mb-3">
-                      <div>
-                        <span className="text-white text-sm font-bold">⚡ 에너지 사용량 현황</span>
-                        <span className="text-gray-500 text-xs ml-2">{latestYM.slice(0,4)}년 {parseInt(latestYM.slice(5))}월 누계</span>
+                  {/* ⑤ 에너지 사용량 */}
+                  <div className="pn">
+                    <div className="ph">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ color: 'var(--t1)', fontSize: '13px', fontWeight: 600 }}>⚡ 에너지 사용량 현황</span>
+                        <span style={{ color: 'var(--t3)', fontSize: '11px' }}>{latestYM.slice(0,4)}년 {parseInt(latestYM.slice(5))}월 누계</span>
                       </div>
-                      <button onClick={() => setActiveTab("energy-usage")} className="text-[#00d4ff] text-xs hover:text-white flex items-center gap-0.5 transition-colors">
+                      <button onClick={() => setActiveTab("energy-view")} style={{ color: 'var(--cy)', fontSize: '11px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px' }}>
                         상세보기 <ChevronRight size={11} />
                       </button>
                     </div>
-                    <div className="grid grid-cols-4 gap-4">
-                      {UTIL_KEYS.map(k => (
-                        <UsageChart
-                          key={k}
-                          title={`${UTIL_META[k].name} 사용량`}
-                          data={energyDashData[k].sparkline}
-                          target={budgets[k]}
-                          current={energyDashData[k].monthTotal}
-                          unit={UTIL_META[k].unit}
-                          color={UTIL_META[k].color}
-                          onClick={() => { setSelectedUsageKey(k); setUsageModalOpen(true); }}
-                        />
-                      ))}
+                    <div style={{ padding: '12px' }}>
+                      <div className="grid grid-cols-4 gap-4">
+                        {UTIL_KEYS.map(k => (
+                          <UsageChart
+                            key={k}
+                            title={`${UTIL_META[k].name} 사용량`}
+                            data={energyDashData[k].sparkline}
+                            target={budgets[k]}
+                            current={energyDashData[k].monthTotal}
+                            unit={UTIL_META[k].unit}
+                            color={UTIL_META[k].color}
+                            onClick={() => { setSelectedUsageKey(k); setUsageModalOpen(true); }}
+                          />
+                        ))}
+                      </div>
                     </div>
                   </div>
 
-                  {/* ② 핵심 KPI — 컴팩트 한 줄 배너 */}
-                  <div className="bg-[#0f2940] border border-[#1e3a5f] rounded-2xl overflow-hidden">
-                    {/* 상단 셀 */}
-                    <div className="grid grid-cols-7 divide-x divide-[#1e3a5f]">
+                  {/* ② 핵심 KPI — 개별 카드 */}
+                  <div className="grid grid-cols-7 gap-3">
 
-                      {/* 가동률 — 원형 링 */}
-                      <div className="flex items-center gap-4 px-5 py-4">
-                        <div className="w-11 h-11 relative flex-shrink-0">
-                          <svg className="w-full h-full -rotate-90" viewBox="0 0 44 44">
-                            <circle cx="22" cy="22" r="18" fill="none" stroke="#1e3a5f" strokeWidth="3.5" />
-                            <circle cx="22" cy="22" r="18" fill="none" stroke="#00ff88" strokeWidth="3.5"
-                              strokeDasharray={`${(healthRate / 100) * 113.1} 113.1`}
-                              strokeLinecap="round" />
+                    {/* 가동률 */}
+                    <div className="kpi" style={{ '--kc': '#00e5a0' } as React.CSSProperties}>
+                      <div style={{ color: 'var(--t2)', fontSize: '10px', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '1px' }}>전체 가동률</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <div style={{ width: '38px', height: '38px', position: 'relative', flexShrink: 0 }}>
+                          <svg style={{ width: '100%', height: '100%', transform: 'rotate(-90deg)' }} viewBox="0 0 44 44">
+                            <circle cx="22" cy="22" r="18" fill="none" stroke="#1a3050" strokeWidth="3.5" />
+                            <circle cx="22" cy="22" r="18" fill="none" stroke="#00e5a0" strokeWidth="3.5"
+                              strokeDasharray={`${(healthRate / 100) * 113.1} 113.1`} strokeLinecap="round" />
                           </svg>
-                          <div className="absolute inset-0 flex items-center justify-center">
-                            <Activity size={13} className="text-[#00ff88]" />
+                          <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <Activity size={12} style={{ color: '#00e5a0' }} />
                           </div>
                         </div>
                         <div>
-                          <div className="text-gray-500 text-xs mb-0.5">전체 가동률</div>
-                          <div className="flex items-baseline gap-0.5">
-                            <span className="text-2xl font-bold text-[#00ff88]">{healthRate}</span>
-                            <span className="text-xs text-[#00ff88]/50">%</span>
+                          <div style={{ display: 'flex', alignItems: 'baseline', gap: '1px' }}>
+                            <span style={{ fontSize: '20px', fontWeight: 700, color: '#00e5a0', fontFamily: 'Rajdhani,sans-serif' }}>{healthRate}</span>
+                            <span style={{ fontSize: '11px', color: '#00e5a0', opacity: 0.6 }}>%</span>
                           </div>
-                          <div className="text-gray-600 text-xs mt-0.5">{normalEquip}/{totalEquip}대</div>
+                          <div style={{ color: 'var(--t3)', fontSize: '10px' }}>{normalEquip}/{totalEquip}대</div>
                         </div>
                       </div>
-
-                      {/* 이상치 */}
-                      <button
-                        onClick={() => { setAnomalyType("danger"); setAnomalyModalOpen(true); }}
-                        className="flex items-center gap-3 px-5 py-4 hover:bg-[#ff4444]/5 transition-colors text-left group"
-                      >
-                        <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-[#ff4444]/15 flex-shrink-0">
-                          <AlertCircle size={16} className="text-[#ff4444]" />
-                        </div>
-                        <div>
-                          <div className="text-gray-500 text-xs mb-0.5">이상치 설비</div>
-                          <div className="flex items-baseline gap-0.5">
-                            <span className="text-2xl font-bold text-[#ff4444]">{dangerEquip}</span>
-                            <span className="text-xs text-[#ff4444]/50">건</span>
-                          </div>
-                          <div className="text-gray-600 text-xs mt-0.5 group-hover:text-[#ff4444]/60 transition-colors">즉시 조치</div>
-                        </div>
-                      </button>
-
-                      {/* 주의 */}
-                      <button
-                        onClick={() => { setAnomalyType("warning"); setAnomalyModalOpen(true); }}
-                        className="flex items-center gap-3 px-5 py-4 hover:bg-[#ffa500]/5 transition-colors text-left group"
-                      >
-                        <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-[#ffa500]/15 flex-shrink-0">
-                          <AlertTriangle size={16} className="text-[#ffa500]" />
-                        </div>
-                        <div>
-                          <div className="text-gray-500 text-xs mb-0.5">주의 설비</div>
-                          <div className="flex items-baseline gap-0.5">
-                            <span className="text-2xl font-bold text-[#ffa500]">{warnEquip}</span>
-                            <span className="text-xs text-[#ffa500]/50">건</span>
-                          </div>
-                          <div className="text-gray-600 text-xs mt-0.5 group-hover:text-[#ffa500]/60 transition-colors">모니터링</div>
-                        </div>
-                      </button>
-
-                      {/* AI 예지 */}
-                      <button
-                        onClick={() => setActiveTab("ai-prediction")}
-                        className="flex items-center gap-3 px-5 py-4 hover:bg-[#a78bfa]/5 transition-colors text-left group"
-                      >
-                        <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-[#a78bfa]/15 flex-shrink-0">
-                          <Brain size={16} className="text-[#a78bfa]" />
-                        </div>
-                        <div>
-                          <div className="text-gray-500 text-xs mb-0.5">AI 예지</div>
-                          <div className="flex items-baseline gap-0.5">
-                            <span className="text-2xl font-bold text-[#a78bfa]">{aiPredictionCount}</span>
-                            <span className="text-xs text-[#a78bfa]/50">건</span>
-                          </div>
-                          <div className="text-gray-600 text-xs mt-0.5 group-hover:text-[#a78bfa]/60 transition-colors">고위험 3건</div>
-                        </div>
-                      </button>
-
-                      {/* 활성 알람 */}
-                      <button
-                        onClick={() => setActiveTab("alarm-events")}
-                        className="flex items-center gap-3 px-5 py-4 hover:bg-[#f97316]/5 transition-colors text-left group"
-                      >
-                        <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-[#f97316]/15 flex-shrink-0">
-                          <AlertCircle size={16} className="text-[#f97316]" />
-                        </div>
-                        <div>
-                          <div className="text-gray-500 text-xs mb-0.5">활성 알람</div>
-                          <div className="flex items-baseline gap-0.5">
-                            <span className="text-2xl font-bold text-[#f97316]">{alarmCount}</span>
-                            <span className="text-xs text-[#f97316]/50">건</span>
-                          </div>
-                          <div className="text-gray-600 text-xs mt-0.5 group-hover:text-[#f97316]/60 transition-colors">미처리 3건</div>
-                        </div>
-                      </button>
-
-                      {/* 정기점검 D-Day */}
-                      <button
-                        onClick={() => setActiveTab("preventive-maintenance")}
-                        className="flex items-center gap-3 px-5 py-4 hover:bg-[#ffa500]/5 transition-colors text-left group"
-                      >
-                        <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-[#ffa500]/15 flex-shrink-0">
-                          <Calendar size={16} className="text-[#ffa500]" />
-                        </div>
-                        <div>
-                          <div className="text-gray-500 text-xs mb-0.5">다음 점검</div>
-                          <div className="flex items-baseline gap-0.5">
-                            <span className="text-2xl font-bold text-[#ffa500]">D-7</span>
-                          </div>
-                          <div className="text-gray-600 text-xs mt-0.5 group-hover:text-[#ffa500]/60 transition-colors">CH-03 대상</div>
-                        </div>
-                      </button>
-
-                      {/* PM 완료율 */}
-                      <button
-                        onClick={() => setActiveTab("preventive-maintenance")}
-                        className="flex items-center gap-3 px-5 py-4 hover:bg-[#00d4ff]/5 transition-colors text-left group"
-                      >
-                        <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-[#00d4ff]/15 flex-shrink-0">
-                          <CheckCircle2 size={16} className="text-[#00d4ff]" />
-                        </div>
-                        <div>
-                          <div className="text-gray-500 text-xs mb-0.5">PM 완료율</div>
-                          <div className="flex items-baseline gap-0.5">
-                            <span className="text-2xl font-bold text-[#00d4ff]">72.7</span>
-                            <span className="text-xs text-[#00d4ff]/50">%</span>
-                          </div>
-                          <div className="text-gray-600 text-xs mt-0.5 group-hover:text-[#00d4ff]/60 transition-colors">목표 90%</div>
-                        </div>
-                      </button>
                     </div>
 
-                    {/* 하단 세그먼트 바 */}
-                    <div className="h-1.5 flex">
-                      <div style={{ width: `${(normalEquip / totalEquip) * 100}%`, background: "linear-gradient(90deg,#00ff88,#00d4ff)" }} />
-                      <div style={{ width: `${(warnEquip   / totalEquip) * 100}%`, backgroundColor: "#ffa500" }} />
-                      <div style={{ width: `${(dangerEquip / totalEquip) * 100}%`, backgroundColor: "#ff4444" }} />
-                    </div>
+                    {/* 이상치 */}
+                    <button className="kpi" style={{ '--kc': '#ff4757', textAlign: 'left', cursor: 'pointer' } as React.CSSProperties}
+                      onClick={() => setActiveTab("alarm-events")}>
+                      <div style={{ color: 'var(--t2)', fontSize: '10px', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '1px' }}>이상치 설비</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <div style={{ width: '34px', height: '34px', borderRadius: '7px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,71,87,.15)', flexShrink: 0 }}>
+                          <AlertCircle size={15} style={{ color: '#ff4757' }} />
+                        </div>
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'baseline', gap: '1px' }}>
+                            <span style={{ fontSize: '20px', fontWeight: 700, color: '#ff4757', fontFamily: 'Rajdhani,sans-serif' }}>{dangerEquip}</span>
+                            <span style={{ fontSize: '11px', color: '#ff4757', opacity: 0.6 }}>건</span>
+                          </div>
+                          <div style={{ color: 'var(--t3)', fontSize: '10px' }}>즉시 조치</div>
+                        </div>
+                      </div>
+                    </button>
+
+                    {/* 주의 */}
+                    <button className="kpi" style={{ '--kc': '#ff6b35', textAlign: 'left', cursor: 'pointer' } as React.CSSProperties}
+                      onClick={() => setActiveTab("alarm-events")}>
+                      <div style={{ color: 'var(--t2)', fontSize: '10px', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '1px' }}>주의 설비</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <div style={{ width: '34px', height: '34px', borderRadius: '7px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,107,53,.15)', flexShrink: 0 }}>
+                          <AlertTriangle size={15} style={{ color: '#ff6b35' }} />
+                        </div>
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'baseline', gap: '1px' }}>
+                            <span style={{ fontSize: '20px', fontWeight: 700, color: '#ff6b35', fontFamily: 'Rajdhani,sans-serif' }}>{warnEquip}</span>
+                            <span style={{ fontSize: '11px', color: '#ff6b35', opacity: 0.6 }}>건</span>
+                          </div>
+                          <div style={{ color: 'var(--t3)', fontSize: '10px' }}>모니터링</div>
+                        </div>
+                      </div>
+                    </button>
+
+                    {/* AI 예지 */}
+                    <button className="kpi" style={{ '--kc': '#7c3aed', textAlign: 'left', cursor: 'pointer' } as React.CSSProperties}
+                      onClick={() => setActiveTab("ai-prediction")}>
+                      <div style={{ color: 'var(--t2)', fontSize: '10px', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '1px' }}>AI 예지</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <div style={{ width: '34px', height: '34px', borderRadius: '7px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(124,58,237,.15)', flexShrink: 0 }}>
+                          <Brain size={15} style={{ color: '#7c3aed' }} />
+                        </div>
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'baseline', gap: '1px' }}>
+                            <span style={{ fontSize: '20px', fontWeight: 700, color: '#7c3aed', fontFamily: 'Rajdhani,sans-serif' }}>{aiPredictionCount}</span>
+                            <span style={{ fontSize: '11px', color: '#7c3aed', opacity: 0.6 }}>건</span>
+                          </div>
+                          <div style={{ color: 'var(--t3)', fontSize: '10px' }}>고위험 3건</div>
+                        </div>
+                      </div>
+                    </button>
+
+                    {/* 활성 알람 */}
+                    <button className="kpi" style={{ '--kc': '#f97316', textAlign: 'left', cursor: 'pointer' } as React.CSSProperties}
+                      onClick={() => setActiveTab("alarm-events")}>
+                      <div style={{ color: 'var(--t2)', fontSize: '10px', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '1px' }}>활성 알람</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <div style={{ width: '34px', height: '34px', borderRadius: '7px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(249,115,22,.15)', flexShrink: 0 }}>
+                          <AlertCircle size={15} style={{ color: '#f97316' }} />
+                        </div>
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'baseline', gap: '1px' }}>
+                            <span style={{ fontSize: '20px', fontWeight: 700, color: '#f97316', fontFamily: 'Rajdhani,sans-serif' }}>{alarmCount}</span>
+                            <span style={{ fontSize: '11px', color: '#f97316', opacity: 0.6 }}>건</span>
+                          </div>
+                          <div style={{ color: 'var(--t3)', fontSize: '10px' }}>미처리 3건</div>
+                        </div>
+                      </div>
+                    </button>
+
+                    {/* 다음 점검 */}
+                    <button className="kpi" style={{ '--kc': '#ffc107', textAlign: 'left', cursor: 'pointer' } as React.CSSProperties}
+                      onClick={() => setActiveTab("preventive-maintenance")}>
+                      <div style={{ color: 'var(--t2)', fontSize: '10px', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '1px' }}>다음 점검</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <div style={{ width: '34px', height: '34px', borderRadius: '7px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,193,7,.15)', flexShrink: 0 }}>
+                          <Calendar size={15} style={{ color: '#ffc107' }} />
+                        </div>
+                        <div>
+                          <div style={{ fontSize: '20px', fontWeight: 700, color: '#ffc107', fontFamily: 'Rajdhani,sans-serif' }}>D-7</div>
+                          <div style={{ color: 'var(--t3)', fontSize: '10px' }}>CH-03 대상</div>
+                        </div>
+                      </div>
+                    </button>
+
+                    {/* PM 완료율 */}
+                    <button className="kpi" style={{ '--kc': '#00d4ff', textAlign: 'left', cursor: 'pointer' } as React.CSSProperties}
+                      onClick={() => setActiveTab("preventive-maintenance")}>
+                      <div style={{ color: 'var(--t2)', fontSize: '10px', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '1px' }}>PM 완료율</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <div style={{ width: '34px', height: '34px', borderRadius: '7px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,212,255,.15)', flexShrink: 0 }}>
+                          <CheckCircle2 size={15} style={{ color: '#00d4ff' }} />
+                        </div>
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'baseline', gap: '1px' }}>
+                            <span style={{ fontSize: '20px', fontWeight: 700, color: '#00d4ff', fontFamily: 'Rajdhani,sans-serif' }}>72.7</span>
+                            <span style={{ fontSize: '11px', color: '#00d4ff', opacity: 0.6 }}>%</span>
+                          </div>
+                          <div style={{ color: 'var(--t3)', fontSize: '10px' }}>목표 90%</div>
+                        </div>
+                      </div>
+                    </button>
+                  </div>
+
+                  {/* 세그먼트 바 */}
+                  <div style={{ height: '4px', display: 'flex', borderRadius: '2px', overflow: 'hidden' }}>
+                    <div style={{ width: `${(normalEquip / totalEquip) * 100}%`, background: 'linear-gradient(90deg,#00e5a0,#00d4ff)' }} />
+                    <div style={{ width: `${(warnEquip   / totalEquip) * 100}%`, backgroundColor: '#ff6b35' }} />
+                    <div style={{ width: `${(dangerEquip / totalEquip) * 100}%`, backgroundColor: '#ff4757' }} />
                   </div>
 
                   {/* ③ 공장별 현황 · 최근 알람 · AI 이상예지 */}
                   <div className="grid grid-cols-3 gap-4">
 
                     {/* 공장별 설비 현황 */}
-                    <div className="bg-[#0f2940] border border-[#1e3a5f] rounded-xl p-4">
-                      <div className="flex items-center justify-between mb-4">
-                        <span className="text-white text-sm font-bold">🏭 공장별 설비 현황</span>
-                        <button onClick={() => setActiveTab("equipment")} className="text-[#00d4ff] text-xs hover:text-white flex items-center gap-0.5 transition-colors">
+                    <div className="pn flex flex-col">
+                      <div className="ph">
+                        <span style={{ color: 'var(--t1)', fontSize: '13px', fontWeight: 600 }}>🏭 공장별 설비 현황</span>
+                        <button onClick={() => setActiveTab("equipment")} style={{ color: 'var(--cy)', fontSize: '11px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px' }}>
                           전체보기 <ChevronRight size={11} />
                         </button>
                       </div>
-                      <div className="space-y-5">
-                        {plantData.map(p => (
-                          <div key={p.name}>
-                            <div className="flex items-center justify-between mb-1.5">
-                              <div className="flex items-center gap-2">
-                                <span className="bg-[#00d4ff]/20 text-[#00d4ff] text-xs font-bold px-2 py-0.5 rounded">{p.name}</span>
-                                <span className="text-gray-500 text-xs">{p.total}대</span>
+                      <div style={{ padding: '13px', flex: 1 }}>
+                        <div className="space-y-5">
+                          {plantData.map(p => (
+                            <div key={p.name}>
+                              <div className="flex items-center justify-between mb-1.5">
+                                <div className="flex items-center gap-2">
+                                  <span style={{ background: 'rgba(0,212,255,.15)', color: 'var(--cy)', fontSize: '11px', fontWeight: 700, padding: '1px 7px', borderRadius: '4px' }}>{p.name}</span>
+                                  <span style={{ color: 'var(--t3)', fontSize: '11px' }}>{p.total}대</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  {p.danger  > 0 && <span style={{ color: '#ff4757', fontSize: '11px', fontWeight: 600 }}>⚠ {p.danger}</span>}
+                                  {p.warning > 0 && <span style={{ color: '#ff6b35', fontSize: '11px', fontWeight: 600 }}>△ {p.warning}</span>}
+                                  <span style={{ color: 'var(--t1)', fontSize: '11px', fontWeight: 700 }}>{p.rate}%</span>
+                                </div>
                               </div>
-                              <div className="flex items-center gap-2">
-                                {p.danger  > 0 && <span className="text-[#ff4444] text-xs font-medium">⚠ {p.danger}</span>}
-                                {p.warning > 0 && <span className="text-[#ffa500] text-xs font-medium">△ {p.warning}</span>}
-                                <span className="text-white text-xs font-bold">{p.rate}%</span>
+                              <div style={{ height: '6px', background: 'var(--bg4)', borderRadius: '3px', overflow: 'hidden' }}>
+                                <div style={{ height: '100%', display: 'flex' }}>
+                                  <div style={{ width: `${(p.normal / p.total) * 100}%`, backgroundColor: '#00e5a0' }} />
+                                  <div style={{ width: `${(p.warning / p.total) * 100}%`, backgroundColor: '#ff6b35' }} />
+                                  <div style={{ width: `${(p.danger / p.total) * 100}%`, backgroundColor: '#ff4757' }} />
+                                </div>
+                              </div>
+                              <div className="flex gap-3 mt-1.5">
+                                <span style={{ color: '#00e5a0', fontSize: '10px' }}>● 정상 {p.normal}</span>
+                                <span style={{ color: '#ff6b35', fontSize: '10px' }}>● 주의 {p.warning}</span>
+                                <span style={{ color: '#ff4757', fontSize: '10px' }}>● 이상 {p.danger}</span>
                               </div>
                             </div>
-                            <div className="h-2.5 bg-[#07111e] rounded-full overflow-hidden">
-                              <div className="h-full flex rounded-full overflow-hidden">
-                                <div style={{ width: `${(p.normal / p.total) * 100}%`, backgroundColor: "#00ff88" }} />
-                                <div style={{ width: `${(p.warning / p.total) * 100}%`, backgroundColor: "#ffa500" }} />
-                                <div style={{ width: `${(p.danger / p.total) * 100}%`, backgroundColor: "#ff4444" }} />
-                              </div>
+                          ))}
+                        </div>
+                        <div style={{ marginTop: '16px', paddingTop: '12px', borderTop: '1px solid var(--br)', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
+                          {[
+                            { label: '정상', value: normalEquip, color: '#00e5a0' },
+                            { label: '주의', value: warnEquip,   color: '#ff6b35' },
+                            { label: '이상', value: dangerEquip, color: '#ff4757' },
+                          ].map(s => (
+                            <div key={s.label} style={{ background: 'var(--bg4)', borderRadius: '7px', padding: '8px', textAlign: 'center' }}>
+                              <div style={{ fontWeight: 700, fontSize: '18px', color: s.color, fontFamily: 'Rajdhani,sans-serif' }}>{s.value}</div>
+                              <div style={{ color: 'var(--t3)', fontSize: '10px' }}>{s.label}</div>
                             </div>
-                            <div className="flex gap-3 mt-1.5">
-                              <span className="text-[#00ff88] text-xs">● 정상 {p.normal}</span>
-                              <span className="text-[#ffa500] text-xs">● 주의 {p.warning}</span>
-                              <span className="text-[#ff4444] text-xs">● 이상 {p.danger}</span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                      {/* 전체 통계 요약 */}
-                      <div className="mt-5 pt-4 border-t border-[#1e3a5f] grid grid-cols-3 gap-3">
-                        {[
-                          { label: "정상", value: normalEquip, color: "#00ff88" },
-                          { label: "주의", value: warnEquip,   color: "#ffa500" },
-                          { label: "이상", value: dangerEquip, color: "#ff4444" },
-                        ].map(s => (
-                          <div key={s.label} className="bg-[#07111e] rounded-xl p-2.5 text-center">
-                            <div className="font-bold text-lg" style={{ color: s.color }}>{s.value}</div>
-                            <div className="text-gray-500 text-xs">{s.label}</div>
-                          </div>
-                        ))}
+                          ))}
+                        </div>
                       </div>
                     </div>
 
                     {/* 최근 활성 알람 */}
-                    <div className="bg-[#0f2940] border border-[#1e3a5f] rounded-xl overflow-hidden flex flex-col">
-                      <div className="flex items-center justify-between px-4 py-3 border-b border-[#1e3a5f] bg-[#ff4444]/5">
-                        <div className="flex items-center gap-2">
-                          <span className="w-2 h-2 rounded-full bg-[#ff4444] animate-pulse" />
-                          <span className="text-white text-sm font-bold">🔔 최근 활성 알람</span>
-                          <span className="bg-[#ff4444] text-white text-xs px-1.5 py-0.5 rounded-full font-bold">{alarmCount}</span>
+                    <div className="pn flex flex-col">
+                      <div className="ph" style={{ borderBottomColor: 'rgba(255,71,87,.2)', background: 'rgba(255,71,87,.04)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+                          <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#ff4757', display: 'inline-block', animation: 'pg 2s infinite' }} />
+                          <span style={{ color: 'var(--t1)', fontSize: '13px', fontWeight: 600 }}>🔔 최근 활성 알람</span>
+                          <span style={{ background: '#ff4757', color: '#fff', fontSize: '10px', padding: '1px 6px', borderRadius: '10px', fontWeight: 700 }}>{alarmCount}</span>
                         </div>
-                        <button onClick={() => setActiveTab("alarm-events")} className="text-[#00d4ff] text-xs hover:text-white flex items-center gap-0.5 transition-colors">
+                        <button onClick={() => setActiveTab("alarm-events")} style={{ color: 'var(--cy)', fontSize: '11px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px' }}>
                           전체보기 <ChevronRight size={11} />
                         </button>
                       </div>
-                      <div className="flex-1 divide-y divide-[#1e3a5f]">
+                      <div style={{ flex: 1 }}>
                         {recentAlarms.map(alarm => {
                           const isCrit = alarm.severity === "critical";
+                          const c = isCrit ? '#ff4757' : '#ff6b35';
                           return (
-                            <div key={alarm.id} className="flex items-center gap-3 px-4 py-3 hover:bg-[#0a1929] transition-colors">
-                              <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isCrit ? "bg-[#ff4444] animate-pulse" : "bg-[#ffa500]"}`} />
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 mb-0.5">
-                                  <span className={`text-xs font-bold flex-shrink-0 ${isCrit ? "text-[#ff4444]" : "text-[#ffa500]"}`}>{alarm.equipment}</span>
-                                  <span className="text-gray-300 text-xs truncate">{alarm.issue}</span>
+                            <div key={alarm.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 13px', borderBottom: '1px solid var(--br2)' }}
+                              onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,.02)' )}
+                              onMouseLeave={e => (e.currentTarget.style.background = '')}>
+                              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: c, flexShrink: 0 }} />
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>
+                                  <span style={{ fontSize: '11px', fontWeight: 700, color: c, flexShrink: 0 }}>{alarm.equipment}</span>
+                                  <span style={{ color: 'var(--t2)', fontSize: '11px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{alarm.issue}</span>
                                 </div>
-                                <div className="flex items-center gap-2">
-                                  <span className="text-gray-600 text-xs">{alarm.time}</span>
-                                  <span className={`text-xs px-1.5 py-0.5 rounded-full ${
-                                    alarm.status === "미처리"  ? "bg-[#ff4444]/15 text-[#ff4444]"
-                                    : alarm.status === "처리중" ? "bg-[#ffa500]/15 text-[#ffa500]"
-                                    : "bg-[#00ff88]/15 text-[#00ff88]"
-                                  }`}>{alarm.status}</span>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                  <span style={{ color: 'var(--t3)', fontSize: '10px', fontFamily: 'var(--fm)' }}>{alarm.time}</span>
+                                  <span style={{ fontSize: '10px', padding: '1px 6px', borderRadius: '10px',
+                                    background: alarm.status === '미처리' ? 'rgba(255,71,87,.15)' : alarm.status === '처리중' ? 'rgba(255,107,53,.15)' : 'rgba(0,229,160,.15)',
+                                    color: alarm.status === '미처리' ? '#ff4757' : alarm.status === '처리중' ? '#ff6b35' : '#00e5a0'
+                                  }}>{alarm.status}</span>
                                 </div>
                               </div>
-                              <span className={`text-xs flex-shrink-0 px-2 py-0.5 rounded border ${
-                                isCrit ? "border-[#ff4444]/40 text-[#ff4444] bg-[#ff4444]/10"
-                                       : "border-[#ffa500]/40 text-[#ffa500] bg-[#ffa500]/10"
-                              }`}>{isCrit ? "긴급" : "경고"}</span>
+                              <span style={{ fontSize: '10px', padding: '2px 7px', borderRadius: '4px', flexShrink: 0,
+                                border: `1px solid ${c}55`, color: c, background: `${c}18`
+                              }}>{isCrit ? '긴급' : '경고'}</span>
                             </div>
                           );
                         })}
                       </div>
-                      <div className="px-4 py-2.5 bg-[#0a1929] border-t border-[#1e3a5f] flex items-center justify-between">
-                        <div className="flex gap-4 text-xs text-gray-500">
-                          <span>긴급 <span className="text-[#ff4444] font-bold">{recentAlarms.filter(a => a.severity === "critical").length}</span></span>
-                          <span>경고 <span className="text-[#ffa500] font-bold">{recentAlarms.filter(a => a.severity === "warning").length}</span></span>
+                      <div style={{ padding: '8px 13px', background: 'var(--bg4)', borderTop: '1px solid var(--br2)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <div style={{ display: 'flex', gap: '14px', fontSize: '11px', color: 'var(--t3)' }}>
+                          <span>긴급 <span style={{ color: '#ff4757', fontWeight: 700 }}>{recentAlarms.filter(a => a.severity === 'critical').length}</span></span>
+                          <span>경고 <span style={{ color: '#ff6b35', fontWeight: 700 }}>{recentAlarms.filter(a => a.severity === 'warning').length}</span></span>
                         </div>
-                        <span className="text-gray-600 text-xs">미처리 <span className="text-[#ff4444] font-bold">{recentAlarms.filter(a => a.status === "미처리").length}</span>건</span>
+                        <span style={{ fontSize: '11px', color: 'var(--t3)' }}>미처리 <span style={{ color: '#ff4757', fontWeight: 700 }}>{recentAlarms.filter(a => a.status === '미처리').length}</span>건</span>
                       </div>
                     </div>
 
                     {/* AI 이상예지 */}
-                    <div className="bg-[#0f2940] border border-[#1e3a5f] rounded-xl overflow-hidden flex flex-col">
-                      <div className="flex items-center justify-between px-4 py-3 border-b border-[#1e3a5f] bg-[#a78bfa]/5">
-                        <div className="flex items-center gap-2">
-                          <Brain size={14} className="text-[#a78bfa]" />
-                          <span className="text-white text-sm font-bold">🤖 AI 이상예지</span>
-                          <span className="bg-[#a78bfa] text-white text-xs px-1.5 py-0.5 rounded-full font-bold">{aiPredictions.length}</span>
+                    <div className="pn flex flex-col">
+                      <div className="ph" style={{ borderBottomColor: 'rgba(124,58,237,.25)', background: 'rgba(124,58,237,.04)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+                          <Brain size={13} style={{ color: '#7c3aed' }} />
+                          <span style={{ color: 'var(--t1)', fontSize: '13px', fontWeight: 600 }}>🤖 AI 이상예지</span>
+                          <span style={{ background: '#7c3aed', color: '#fff', fontSize: '10px', padding: '1px 6px', borderRadius: '10px', fontWeight: 700 }}>{aiPredictions.length}</span>
                         </div>
-                        <button onClick={() => setActiveTab("ai-prediction")} className="text-[#00d4ff] text-xs hover:text-white flex items-center gap-0.5 transition-colors">
+                        <button onClick={() => setActiveTab("ai-prediction")} style={{ color: 'var(--cy)', fontSize: '11px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px' }}>
                           전체보기 <ChevronRight size={11} />
                         </button>
                       </div>
-                      <div className="flex-1 divide-y divide-[#1e3a5f]">
-                        {aiPredictions.map((p, i) => (
-                          <div key={i} className="flex items-center gap-3 px-4 py-3 hover:bg-[#0a1929] transition-colors">
-                            <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${p.level === "high" ? "bg-[#ff4444] animate-pulse" : "bg-[#ffa500]"}`} />
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 mb-0.5">
-                                <span className={`text-xs font-bold flex-shrink-0 ${p.level === "high" ? "text-[#ff4444]" : "text-[#ffa500]"}`}>{p.equipment}</span>
-                                <span className="text-gray-300 text-xs truncate">{p.issue}</span>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <div className="w-20 h-1.5 bg-[#07111e] rounded-full overflow-hidden">
-                                  <div className="h-full rounded-full" style={{
-                                    width: `${p.confidence}%`,
-                                    background: p.level === "high"
-                                      ? "linear-gradient(90deg,#a78bfa,#ff4444)"
-                                      : "linear-gradient(90deg,#a78bfa,#ffa500)"
-                                  }} />
+                      <div style={{ flex: 1 }}>
+                        {aiPredictions.map((p, i) => {
+                          const c = p.level === 'high' ? '#ff4757' : '#ff6b35';
+                          return (
+                            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 13px', borderBottom: '1px solid var(--br2)' }}>
+                              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: c, flexShrink: 0 }} />
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '3px' }}>
+                                  <span style={{ fontSize: '11px', fontWeight: 700, color: c, flexShrink: 0 }}>{p.equipment}</span>
+                                  <span style={{ color: 'var(--t2)', fontSize: '11px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.issue}</span>
                                 </div>
-                                <span className="text-gray-600 text-xs">{p.confidence}%</span>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                  <div style={{ width: '72px', height: '4px', background: 'var(--bg4)', borderRadius: '2px', overflow: 'hidden' }}>
+                                    <div style={{ height: '100%', borderRadius: '2px', width: `${p.confidence}%`,
+                                      background: p.level === 'high' ? 'linear-gradient(90deg,#7c3aed,#ff4757)' : 'linear-gradient(90deg,#7c3aed,#ff6b35)'
+                                    }} />
+                                  </div>
+                                  <span style={{ color: 'var(--t3)', fontSize: '10px', fontFamily: 'var(--fm)' }}>{p.confidence}%</span>
+                                </div>
                               </div>
+                              <div style={{ fontSize: '10px', padding: '2px 7px', borderRadius: '4px', flexShrink: 0,
+                                border: `1px solid ${c}55`, color: c, background: `${c}18`
+                              }}>D-{p.daysLeft}</div>
                             </div>
-                            <div className={`flex-shrink-0 text-xs px-2 py-0.5 rounded border ${
-                              p.daysLeft <= 4
-                                ? "border-[#ff4444]/40 text-[#ff4444] bg-[#ff4444]/10"
-                                : "border-[#ffa500]/40 text-[#ffa500] bg-[#ffa500]/10"
-                            }`}>D-{p.daysLeft}</div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
-                      <div className="px-4 py-2.5 bg-[#0a1929] border-t border-[#1e3a5f] flex items-center justify-between">
-                        <div className="flex gap-4 text-xs text-gray-500">
-                          <span>고위험 <span className="text-[#ff4444] font-bold">{aiPredictions.filter(p => p.level === "high").length}</span></span>
-                          <span>경고 <span className="text-[#ffa500] font-bold">{aiPredictions.filter(p => p.level === "warning").length}</span></span>
+                      <div style={{ padding: '8px 13px', background: 'var(--bg4)', borderTop: '1px solid var(--br2)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <div style={{ display: 'flex', gap: '14px', fontSize: '11px', color: 'var(--t3)' }}>
+                          <span>고위험 <span style={{ color: '#ff4757', fontWeight: 700 }}>{aiPredictions.filter(p => p.level === 'high').length}</span></span>
+                          <span>경고 <span style={{ color: '#ff6b35', fontWeight: 700 }}>{aiPredictions.filter(p => p.level === 'warning').length}</span></span>
                         </div>
-                        <span className="text-gray-600 text-xs">정확도 <span className="text-[#00ff88] font-bold">94.7%</span></span>
+                        <span style={{ fontSize: '11px', color: 'var(--t3)' }}>정확도 <span style={{ color: '#00e5a0', fontWeight: 700 }}>94.7%</span></span>
                       </div>
                     </div>
                   </div>
@@ -498,110 +509,113 @@ function App() {
                   <div className="grid grid-cols-3 gap-4">
 
                     {/* 설비 유형별 (2/3) */}
-                    <div className="col-span-2 bg-[#0f2940] border border-[#1e3a5f] rounded-xl p-4">
-                      <div className="flex items-center justify-between mb-4">
-                        <span className="text-white text-sm font-bold">⚙️ 설비 유형별 현황</span>
-                        <button onClick={() => setActiveTab("equipment")} className="text-[#00d4ff] text-xs hover:text-white flex items-center gap-0.5 transition-colors">
+                    <div className="pn col-span-2">
+                      <div className="ph">
+                        <span style={{ color: 'var(--t1)', fontSize: '13px', fontWeight: 600 }}>⚙️ 설비 유형별 현황</span>
+                        <button onClick={() => setActiveTab("equipment")} style={{ color: 'var(--cy)', fontSize: '11px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px' }}>
                           전체보기 <ChevronRight size={11} />
                         </button>
                       </div>
-                      <div className="grid grid-cols-4 gap-3">
-                        {equipGroups.map(g => {
-                          const rate = +((g.normal / g.total) * 100).toFixed(0);
-                          return (
-                            <div key={g.name}
-                              className="bg-[#07111e] rounded-xl p-3 border-l-2 border-t border-r border-b border-[#1e3a5f] hover:border-[#2a4a6f] transition-all"
-                              style={{ borderLeftColor: g.color }}>
-                              <div className="flex items-center justify-between mb-2">
-                                <span className="text-gray-300 text-xs font-medium">{g.name}</span>
-                                {g.danger > 0 && <span className="w-1.5 h-1.5 rounded-full bg-[#ff4444] animate-pulse" />}
-                              </div>
-                              <div className="flex items-baseline gap-1 mb-2.5">
-                                <span className="text-2xl font-bold" style={{ color: g.color }}>{g.total}</span>
-                                <span className="text-xs opacity-50" style={{ color: g.color }}>대</span>
-                              </div>
-                              <div className="h-1.5 bg-[#0a1929] rounded-full overflow-hidden mb-2">
-                                <div className="h-full flex">
-                                  <div style={{ width: `${(g.normal / g.total) * 100}%`, backgroundColor: "#00ff88" }} />
-                                  <div style={{ width: `${(g.warning / g.total) * 100}%`, backgroundColor: "#ffa500" }} />
-                                  <div style={{ width: `${(g.danger / g.total) * 100}%`, backgroundColor: "#ff4444" }} />
+                      <div style={{ padding: '12px' }}>
+                        <div className="grid grid-cols-4 gap-3">
+                          {equipGroups.map(g => {
+                            const rate = +((g.normal / g.total) * 100).toFixed(0);
+                            const rc = rate >= 95 ? '#00e5a0' : rate >= 90 ? '#ff6b35' : '#ff4757';
+                            return (
+                              <div key={g.name} className="kpi" style={{ '--kc': g.color } as React.CSSProperties}>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                                  <span style={{ color: 'var(--t2)', fontSize: '11px', fontWeight: 500 }}>{g.name}</span>
+                                  {g.danger > 0 && <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#ff4757', display: 'inline-block' }} />}
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'baseline', gap: '3px', marginBottom: '8px' }}>
+                                  <span style={{ fontSize: '22px', fontWeight: 700, color: g.color, fontFamily: 'Rajdhani,sans-serif' }}>{g.total}</span>
+                                  <span style={{ fontSize: '11px', color: g.color, opacity: 0.6 }}>대</span>
+                                </div>
+                                <div style={{ height: '4px', background: 'var(--bg4)', borderRadius: '2px', overflow: 'hidden', marginBottom: '6px' }}>
+                                  <div style={{ height: '100%', display: 'flex' }}>
+                                    <div style={{ width: `${(g.normal / g.total) * 100}%`, backgroundColor: '#00e5a0' }} />
+                                    <div style={{ width: `${(g.warning / g.total) * 100}%`, backgroundColor: '#ff6b35' }} />
+                                    <div style={{ width: `${(g.danger / g.total) * 100}%`, backgroundColor: '#ff4757' }} />
+                                  </div>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '10px' }}>
+                                  <span style={{ color: 'var(--t3)' }}>
+                                    {g.warning > 0 && <span style={{ color: '#ff6b35' }}>{g.warning}</span>}
+                                    {g.warning > 0 && g.danger > 0 && <span style={{ color: 'var(--t3)' }}>/</span>}
+                                    {g.danger  > 0 && <span style={{ color: '#ff4757' }}>{g.danger}</span>}
+                                  </span>
+                                  <span style={{ fontWeight: 700, color: rc }}>{rate}%</span>
                                 </div>
                               </div>
-                              <div className="flex justify-between items-center text-xs">
-                                <span className="text-gray-700 flex gap-1">
-                                  {g.warning > 0 && <span className="text-[#ffa500]">{g.warning}</span>}
-                                  {g.warning > 0 && g.danger > 0 && <span>/</span>}
-                                  {g.danger  > 0 && <span className="text-[#ff4444]">{g.danger}</span>}
-                                </span>
-                                <span className="font-bold" style={{ color: rate >= 95 ? "#00ff88" : rate >= 90 ? "#ffa500" : "#ff4444" }}>
-                                  {rate}%
-                                </span>
-                              </div>
-                            </div>
-                          );
-                        })}
+                            );
+                          })}
+                        </div>
                       </div>
                     </div>
 
                     {/* PM + 예산 (1/3) */}
                     <div className="space-y-4">
                       {/* PM 요약 */}
-                      <div className="bg-[#0f2940] border border-[#1e3a5f] rounded-xl p-4">
-                        <div className="flex items-center justify-between mb-3">
-                          <div className="flex items-center gap-2">
-                            <Wrench size={13} className="text-[#00d4ff]" />
-                            <span className="text-white text-sm font-bold">🛠️ 예방정비 현황</span>
+                      <div className="pn">
+                        <div className="ph">
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <Wrench size={12} style={{ color: 'var(--cy)' }} />
+                            <span style={{ color: 'var(--t1)', fontSize: '13px', fontWeight: 600 }}>🛠️ 예방정비 현황</span>
                           </div>
-                          <button onClick={() => setActiveTab("preventive-maintenance")} className="text-[#00d4ff] text-xs hover:text-white flex items-center gap-0.5 transition-colors">
+                          <button onClick={() => setActiveTab("preventive-maintenance")} style={{ color: 'var(--cy)', fontSize: '11px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px' }}>
                             상세 <ChevronRight size={11} />
                           </button>
                         </div>
-                        <div className="grid grid-cols-4 gap-2 mb-3">
-                          {pmSummary.map(s => (
-                            <div key={s.label} className="bg-[#07111e] rounded-xl p-2 text-center">
-                              <div className="font-bold text-base" style={{ color: s.color }}>{s.value}</div>
-                              <div className="text-gray-600 text-xs mt-0.5">{s.label}</div>
+                        <div style={{ padding: '12px' }}>
+                          <div className="grid grid-cols-4 gap-2" style={{ marginBottom: '12px' }}>
+                            {pmSummary.map(s => (
+                              <div key={s.label} style={{ background: 'var(--bg4)', borderRadius: '7px', padding: '7px', textAlign: 'center' }}>
+                                <div style={{ fontWeight: 700, fontSize: '16px', color: s.color, fontFamily: 'Rajdhani,sans-serif' }}>{s.value}</div>
+                                <div style={{ color: 'var(--t3)', fontSize: '10px' }}>{s.label}</div>
+                              </div>
+                            ))}
+                          </div>
+                          <div style={{ paddingTop: '10px', borderTop: '1px solid var(--br2)' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                              <span style={{ color: 'var(--t2)', fontSize: '11px' }}>이번달 완료율</span>
+                              <span style={{ color: '#ff6b35', fontSize: '11px', fontWeight: 700 }}>72.7%</span>
                             </div>
-                          ))}
-                        </div>
-                        <div className="pt-3 border-t border-[#1e3a5f]">
-                          <div className="flex items-center justify-between mb-1.5">
-                            <span className="text-gray-400 text-xs">이번달 완료율</span>
-                            <span className="text-[#ffa500] text-xs font-bold">72.7%</span>
+                            <div style={{ height: '5px', background: 'var(--bg4)', borderRadius: '3px', overflow: 'hidden' }}>
+                              <div style={{ height: '100%', width: '72.7%', background: 'linear-gradient(90deg,#ff6b35,#00d4ff)', borderRadius: '3px' }} />
+                            </div>
+                            <div style={{ color: 'var(--t3)', fontSize: '10px', marginTop: '4px' }}>목표: 90%</div>
                           </div>
-                          <div className="h-2 bg-[#07111e] rounded-full overflow-hidden">
-                            <div className="h-full bg-gradient-to-r from-[#ffa500] to-[#00d4ff] rounded-full" style={{ width: "72.7%" }} />
-                          </div>
-                          <div className="text-gray-600 text-xs mt-1">목표: 90%</div>
                         </div>
                       </div>
 
                       {/* 예산 현황 */}
-                      <div className="bg-[#0f2940] border border-[#1e3a5f] rounded-xl p-4">
-                        <div className="text-white text-sm font-bold mb-3">💰 예산 운영 현황</div>
-                        <div className="space-y-4">
-                          {[
-                            { label: "월 사용금액", used: 5.2,  budget: 6.5,  unit: "억원", rate: 80   },
-                            { label: "누적 사용량",  used: 10.5, budget: 12.0, unit: "MTOE", rate: 87.5 },
-                          ].map(b => (
-                            <div key={b.label}>
-                              <div className="flex items-center justify-between mb-1">
-                                <span className="text-gray-400 text-xs">{b.label}</span>
-                                <span className="text-gray-500 text-xs">
-                                  <span className="text-white font-medium">{b.used}</span>/{b.budget}{b.unit}
-                                </span>
-                              </div>
-                              <div className="h-2 bg-[#07111e] rounded-full overflow-hidden">
-                                <div className="h-full rounded-full" style={{
-                                  width: `${b.rate}%`,
-                                  backgroundColor: b.rate > 95 ? "#ff4444" : b.rate > 85 ? "#ffa500" : "#00ff88"
-                                }} />
-                              </div>
-                              <div className="text-right text-xs mt-1" style={{
-                                color: b.rate > 95 ? "#ff4444" : b.rate > 85 ? "#ffa500" : "#00ff88"
-                              }}>{b.rate}%</div>
-                            </div>
-                          ))}
+                      <div className="pn">
+                        <div className="ph">
+                          <span style={{ color: 'var(--t1)', fontSize: '13px', fontWeight: 600 }}>💰 예산 운영 현황</span>
+                        </div>
+                        <div style={{ padding: '12px' }}>
+                          <div className="space-y-4">
+                            {[
+                              { label: '월 사용금액', used: 5.2,  budget: 6.5,  unit: '억원', rate: 80   },
+                              { label: '누적 사용량',  used: 10.5, budget: 12.0, unit: 'MTOE', rate: 87.5 },
+                            ].map(b => {
+                              const rc = b.rate > 95 ? '#ff4757' : b.rate > 85 ? '#ff6b35' : '#00e5a0';
+                              return (
+                                <div key={b.label}>
+                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '5px' }}>
+                                    <span style={{ color: 'var(--t2)', fontSize: '11px' }}>{b.label}</span>
+                                    <span style={{ color: 'var(--t3)', fontSize: '11px' }}>
+                                      <span style={{ color: 'var(--t1)', fontWeight: 500 }}>{b.used}</span>/{b.budget}{b.unit}
+                                    </span>
+                                  </div>
+                                  <div style={{ height: '5px', background: 'var(--bg4)', borderRadius: '3px', overflow: 'hidden' }}>
+                                    <div style={{ height: '100%', width: `${b.rate}%`, backgroundColor: rc, borderRadius: '3px' }} />
+                                  </div>
+                                  <div style={{ textAlign: 'right', fontSize: '10px', marginTop: '3px', color: rc }}>{b.rate}%</div>
+                                </div>
+                              );
+                            })}
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -610,31 +624,52 @@ function App() {
               )}
 
               {/* ── 나머지 탭들 ──────────────────────────────── */}
-              {activeTab === "equipment"              && <EquipmentStatusTab />}
+              {activeTab === "equipment"              && <EquipmentStatusTab onTabChange={setActiveTab} />}
+              {['equip-register','equip-history','equip-spec-register','equip-spec-history'].includes(activeTab) && (
+                <EquipmentManagementTab mode={
+                  activeTab === 'equip-register'      ? 'register'      :
+                  activeTab === 'equip-history'       ? 'history'       :
+                  activeTab === 'equip-spec-register' ? 'spec-register' : 'spec-history'
+                } />
+              )}
               {(activeTab === "realtime" || activeTab === "fdc-realtime") && <RealtimeMonitorTab />}
-              {activeTab === "hmi-trend"              && <HMITrendChart />}
-              {activeTab === "cooling"                && <ChillerTab />}
-              {activeTab === "air"                    && <AirSystemTab />}
-              {activeTab === "compressor"             && <EquipmentDashboardTab type="compressor" />}
-              {activeTab === "boiler-dashboard"       && <EquipmentDashboardTab type="boiler-dashboard" />}
-              {activeTab === "pcw-icw"                && <EquipmentDashboardTab type="pcw-icw" />}
-              {activeTab === "pvac-hvac"              && <EquipmentDashboardTab type="pvac-hvac" />}
-              {activeTab === "ar-purifier"            && <EquipmentDashboardTab type="ar-purifier" />}
-              {activeTab === "gas-analyzer"           && <EquipmentDashboardTab type="gas-analyzer" />}
-              {activeTab === "exhaust-fan"            && <EquipmentDashboardTab type="exhaust-fan" />}
-              {activeTab === "gas-detector"           && <EquipmentDashboardTab type="gas-detector" />}
+              {activeTab === "hmi-trend"              && <HMITrendChart initialTag={hmiInitialTag} onTagConsumed={() => setHmiInitialTag('')} />}
+              {activeTab === "cooling"                && <ChillerTab onBack={() => setActiveTab('equipment')} />}
+              {activeTab === "air"                    && <AirSystemTab onBack={() => setActiveTab('equipment')} />}
+              {activeTab === "compressor"             && <EquipmentDashboardTab type="compressor" onBack={() => setActiveTab('equipment')} />}
+              {activeTab === "boiler-dashboard"       && <EquipmentDashboardTab type="boiler-dashboard" onBack={() => setActiveTab('equipment')} />}
+              {activeTab === "pcw-icw"                && <EquipmentDashboardTab type="pcw-icw" onBack={() => setActiveTab('equipment')} />}
+              {activeTab === "pvac-hvac"              && <EquipmentDashboardTab type="pvac-hvac" onBack={() => setActiveTab('equipment')} />}
+              {activeTab === "ar-purifier"            && <EquipmentDashboardTab type="ar-purifier" onBack={() => setActiveTab('equipment')} />}
+              {activeTab === "gas-analyzer"           && <EquipmentDashboardTab type="gas-analyzer" onBack={() => setActiveTab('equipment')} />}
+              {activeTab === "exhaust-fan"            && <EquipmentDashboardTab type="exhaust-fan" onBack={() => setActiveTab('equipment')} />}
+              {activeTab === "gas-detector"           && <EquipmentDashboardTab type="gas-detector" onBack={() => setActiveTab('equipment')} />}
               {activeTab === "ai-prediction"          && <AIPredictionTab />}
-              {activeTab === "alarm-events"           && <AlarmEventTab />}
+              {activeTab === "alarm-events"           && <AlarmEventTab onGoToHmi={(tag) => { setHmiInitialTag(tag); setActiveTab('hmi-trend'); }} onAlarmCountChange={setLiveAlarmCount} />}
               {activeTab === "fms-data"               && <FMSDataTab />}
               {activeTab === "preventive-maintenance" && <PreventiveMaintenanceTab />}
               {activeTab === 'work-order' && <WorkOrderTab />}
+              {['preventive-plan','preventive-result','inspection-history','checksheet'].includes(activeTab) && (
+                <PreventiveInspectionTab mode={
+                  activeTab === 'preventive-plan'    ? 'plan'       :
+                  activeTab === 'preventive-result'  ? 'result'     :
+                  activeTab === 'inspection-history' ? 'history'    : 'checksheet'
+                } />
+              )}
               {activeTab === "budget-operation"       && <BudgetOperationCard />}
               {activeTab === "energy-usage-summary"   && <EnergyUsageSummaryCard />}
-              {activeTab === "energy-usage"           && <EnergyUsageTab />}
-              {activeTab === "cost-repair-consumable" && <CostManagementTab kind="repair-consumable" />}
-              {activeTab === "cost-service-fee"       && <CostManagementTab kind="service-fee" />}
-              {activeTab === "inventory-management"   && <InventoryManagementTab />}
-              {activeTab === "compliance-management"  && <ComplianceManagementTab />}
+              {['energy-input','energy-view','energy-analysis'].includes(activeTab) && (
+                <EnergyUsageTab mode={activeTab === 'energy-input' ? 'input' : activeTab === 'energy-view' ? 'view' : 'analysis'} />
+              )}
+              {['cost-input','cost-view','cost-analysis'].includes(activeTab) && (
+                <CostManagementTab mode={activeTab === 'cost-input' ? 'input' : activeTab === 'cost-view' ? 'view' : 'analysis'} />
+              )}
+              {['stock-input','stock-view','stock-history'].includes(activeTab) && (
+                <InventoryManagementTab mode={activeTab === 'stock-input' ? 'input' : activeTab === 'stock-view' ? 'view' : 'history'} />
+              )}
+              {['compliance-officer','compliance-education','compliance-inspection'].includes(activeTab) && (
+                <ComplianceManagementTab mode={activeTab === 'compliance-officer' ? 'officer' : activeTab === 'compliance-education' ? 'education' : 'inspection'} />
+              )}
               {activeTab === "settings" && (
                 <div className="bg-[#0f2940] border border-[#1e3a5f] rounded-xl p-8">
                   <h2 className="text-white text-xl font-bold mb-4">설정</h2>

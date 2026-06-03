@@ -50,8 +50,8 @@ export function Header() {
   };
 
   return (
-    <div className="fixed top-0 left-0 right-0 h-14 bg-[#050f1a] border-b border-[#1c2d3f] flex items-center justify-between px-6 z-50">
-      <div className="flex items-center gap-4">
+    <div className="hdr">
+      <div className="hdr-l">
         <div className="logo">
           <div className="logo-ic">AIX</div>
           <div>

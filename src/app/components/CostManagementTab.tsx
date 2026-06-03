@@ -1,186 +1,294 @@
-import { useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { Calculator, ChartNoAxesCombined, FilePenLine, Search } from 'lucide-react';
 
-type CostKind = 'repair-consumable' | 'service-fee';
+type CostMode = 'input' | 'view' | 'analysis';
 
-const labels: Record<CostKind, { title: string; desc: string }> = {
-  'repair-consumable': {
-    title: '수선비, 소모품비',
-    desc: '설비 수선 및 소모성 자재 비용의 예산/실적을 관리합니다.',
-  },
-  'service-fee': {
-    title: '지급수수료',
-    desc: '외주, 검사, 용역성 지급수수료의 예산/실적을 관리합니다.',
-  },
-};
-
-const initialRows = [
-  { month: '2026-01', item: '냉동기 정비', category: '수선비', budget: 18000000, actual: 16500000, owner: '1P' },
-  { month: '2026-02', item: 'Pump Seal', category: '소모품비', budget: 9000000, actual: 10400000, owner: '2P' },
-  { month: '2026-03', item: 'Compressor 외주점검', category: '지급수수료', budget: 14500000, actual: 15800000, owner: '3P' },
-  { month: '2026-04', item: 'Gas 감지기 교정', category: '지급수수료', budget: 7200000, actual: 6900000, owner: '공통' },
-];
+interface CostRow {
+  id: number;
+  month: string;
+  item: string;
+  category: string;
+  budget: number;
+  actual: number;
+  owner: string;
+}
 
 function money(n: number) {
   return new Intl.NumberFormat('ko-KR').format(n);
 }
 
-export function CostManagementTab({ kind }: { kind: CostKind }) {
-  const meta = labels[kind];
-  const [rows, setRows] = useState(initialRows);
-  const [form, setForm] = useState({ month: '2026-05', item: '', category: kind === 'service-fee' ? '지급수수료' : '수선비', budget: '', actual: '', owner: '1P' });
+const cell = { padding: '8px 13px', fontSize: '12px' } as const;
 
-  const filtered = useMemo(() => rows.filter(r =>
-    kind === 'service-fee' ? r.category === '지급수수료' : r.category !== '지급수수료'
-  ), [rows, kind]);
+export function CostManagementTab({ mode }: { mode: CostMode }) {
+  const now = new Date();
+  const [year, setYear]   = useState(now.getFullYear());
+  const [month, setMonth] = useState(now.getMonth() + 1);
 
-  const totalBudget = filtered.reduce((s, r) => s + r.budget, 0);
-  const totalActual = filtered.reduce((s, r) => s + r.actual, 0);
-  const variance = totalActual - totalBudget;
+  const [rows, setRows]     = useState<CostRow[]>([]);
+  const [loadStatus, setLoadStatus] = useState<'loading' | 'ok' | 'error'>('loading');
 
-  const trend = filtered.map(r => ({
-    month: r.month.slice(5) + '월',
-    budget: r.budget / 1000000,
-    actual: r.actual / 1000000,
-    variance: (r.actual - r.budget) / 1000000,
-  }));
+  const defaultMonth = `${year}-${String(month).padStart(2, '0')}`;
+  const [form, setForm] = useState({
+    month: defaultMonth,
+    item: '', category: '수선비', budget: '', actual: '', owner: '1P',
+  });
 
-  const addRow = () => {
-    if (!form.item || !form.budget || !form.actual) return;
-    setRows(prev => [...prev, {
-      month: form.month,
-      item: form.item,
-      category: form.category,
-      budget: Number(form.budget),
-      actual: Number(form.actual),
-      owner: form.owner,
-    }]);
-    setForm({ ...form, item: '', budget: '', actual: '' });
+  const loadRows = () => {
+    setLoadStatus('loading');
+    fetch(`/api/cost-records?year=${year}&month=${month}`)
+      .then(r => { if (!r.ok) throw new Error(); return r.json(); })
+      .then((data: CostRow[]) => { setRows(data); setLoadStatus('ok'); })
+      .catch(() => setLoadStatus('error'));
   };
 
-  const inputClass = 'bg-[#07111e] border border-[#1e3a5f] text-gray-300 text-xs rounded-lg px-2 py-1.5 focus:outline-none focus:border-[#00d4ff]';
+  useEffect(() => { loadRows(); }, [year, month]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const totalBudget = rows.reduce((s, r) => s + r.budget, 0);
+  const totalActual = rows.reduce((s, r) => s + r.actual, 0);
+  const variance    = totalBudget - totalActual;
+  const execRate    = totalBudget ? ((totalActual / totalBudget) * 100).toFixed(1) : '0.0';
+
+  const trend = rows.map(r => ({
+    month:    r.month.slice(5) + '월',
+    budget:   +(r.budget  / 1000000).toFixed(1),
+    actual:   +(r.actual  / 1000000).toFixed(1),
+    variance: +((r.actual - r.budget) / 1000000).toFixed(1),
+  }));
+
+  const addRow = async () => {
+    if (!form.item || !form.budget || !form.actual) return;
+    try {
+      const res = await fetch('/api/cost-records', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          month: form.month, item: form.item, category: form.category,
+          budget: Number(form.budget), actual: Number(form.actual), owner: form.owner,
+        }),
+      });
+      if (!res.ok) throw new Error();
+      setForm(f => ({ ...f, item: '', budget: '', actual: '' }));
+      loadRows();
+    } catch {
+      alert('등록에 실패했습니다.');
+    }
+  };
+
+  const deleteRow = async (id: number) => {
+    try {
+      const res = await fetch(`/api/cost-records/${id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error();
+      loadRows();
+    } catch {
+      alert('삭제에 실패했습니다.');
+    }
+  };
+
+  const prevMonth = () => {
+    if (month === 1) { setYear(y => y - 1); setMonth(12); }
+    else setMonth(m => m - 1);
+  };
+  const nextMonth = () => {
+    if (month === 12) { setYear(y => y + 1); setMonth(1); }
+    else setMonth(m => m + 1);
+  };
+
+  const inp = 'bg-[#07111e] border border-[#1e3a5f] text-gray-300 text-xs rounded-lg px-2 py-1.5 focus:outline-none focus:border-[#00d4ff]';
+
+  const loadingEl = (
+    <div style={{ color: '#7a9bbf', padding: 20, textAlign: 'center' }}>데이터 로딩 중...</div>
+  );
+
+  const errorEl = (
+    <div style={{ color: '#ff4444', padding: 20, textAlign: 'center' }}>
+      데이터를 불러오지 못했습니다.{' '}
+      <button onClick={loadRows} style={{ background: 'none', border: '1px solid #ff4444', color: '#ff4444', borderRadius: 6, padding: '2px 10px', cursor: 'pointer', fontSize: 12 }}>재시도</button>
+    </div>
+  );
+
+  const kpiCards = (
+    <div className="grid grid-cols-4 gap-3">
+      {[
+        { label: '금월 예산',  value: money(totalBudget) + '원', color: '#00d4ff' },
+        { label: '금월 실적',  value: money(totalActual) + '원', color: '#00e5a0' },
+        { label: '달성률',     value: execRate + '%',            color: '#ffa500' },
+        { label: '잔액',       value: money(Math.abs(variance)) + '원', color: variance >= 0 ? '#00e5a0' : '#ff4757' },
+      ].map(c => (
+        <div key={c.label} className="kpi" style={{ '--kc': c.color } as React.CSSProperties}>
+          <div style={{ color: 'var(--t2)', fontSize: '10px', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '1px' }}>{c.label}</div>
+          <div style={{ fontSize: '17px', fontWeight: 700, color: c.color, fontFamily: 'Rajdhani,sans-serif', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.value}</div>
+        </div>
+      ))}
+    </div>
+  );
+
+  const dataTable = (
+    <table className="w-full text-xs">
+      <thead>
+        <tr>
+          {['월', '항목', '구분', '예산', '실적', '증감', '담당', ''].map(h => (
+            <th key={h} style={{ ...cell, color: 'var(--t3)', fontWeight: 500, textAlign: 'left', borderBottom: '1px solid var(--br)' }}>{h}</th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map(r => (
+          <tr key={r.id}
+            onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,.02)')}
+            onMouseLeave={e => (e.currentTarget.style.background = '')}
+            style={{ borderBottom: '1px solid var(--br2)' }}>
+            <td style={{ ...cell, color: 'var(--t2)' }}>{r.month}</td>
+            <td style={{ ...cell, color: 'var(--t1)' }}>{r.item}</td>
+            <td style={{ ...cell, color: 'var(--cy)' }}>{r.category}</td>
+            <td style={{ ...cell, color: 'var(--t2)' }}>{money(r.budget)}</td>
+            <td style={{ ...cell, color: 'var(--t2)' }}>{money(r.actual)}</td>
+            <td style={{ ...cell, color: (r.actual - r.budget) > 0 ? '#ff4757' : '#00e5a0' }}>{money(r.actual - r.budget)}</td>
+            <td style={{ ...cell, color: 'var(--t3)' }}>{r.owner}</td>
+            <td style={{ ...cell }}>
+              <button
+                onClick={() => deleteRow(r.id)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ff444470', padding: '2px', fontSize: 13 }}
+                title="삭제"
+              >✕</button>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+
+  const monthSelector = (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <button onClick={prevMonth} style={{ background: 'none', border: '1px solid #1e3a5f', color: '#7a9bbf', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontSize: 13 }}>‹</button>
+      <span style={{ color: 'var(--t1)', fontSize: 13, fontWeight: 600, minWidth: 80, textAlign: 'center' }}>{year}년 {month}월</span>
+      <button onClick={nextMonth} style={{ background: 'none', border: '1px solid #1e3a5f', color: '#7a9bbf', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontSize: 13 }}>›</button>
+    </div>
+  );
 
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-white flex items-center gap-2 mb-1">
-          <Calculator size={20} className="text-[#00d4ff]" />
-          {meta.title}
-        </h1>
-        <p className="text-gray-400 text-xs">{meta.desc}</p>
+        <h1 style={{ color: 'var(--t1)', fontSize: '16px', fontWeight: 700, marginBottom: '4px' }}>💰 비용관리</h1>
+        <p style={{ color: 'var(--t3)', fontSize: '11px' }}>설비 수선비, 소모품비, 지급수수료의 예산/실적을 관리합니다.</p>
       </div>
 
-      <div className="grid grid-cols-4 gap-3">
-        {[
-          { label: '예산 합계', value: money(totalBudget), color: '#00d4ff' },
-          { label: '실적 합계', value: money(totalActual), color: '#00ff88' },
-          { label: '증감', value: `${variance >= 0 ? '+' : ''}${money(variance)}`, color: variance > 0 ? '#ff4444' : '#00ff88' },
-          { label: '집행률', value: `${totalBudget ? ((totalActual / totalBudget) * 100).toFixed(1) : '0.0'}%`, color: '#ffa500' },
-        ].map(card => (
-          <div key={card.label} className="bg-[#0f2940] border rounded-xl p-4" style={{ borderColor: card.color + '35' }}>
-            <div className="text-gray-400 text-xs mb-2">{card.label}</div>
-            <div className="text-xl font-bold truncate" style={{ color: card.color }}>{card.value}</div>
-          </div>
-        ))}
-      </div>
+      {kpiCards}
 
-      <div className="bg-[#0f2940] border border-[#1e3a5f] rounded-xl p-4">
-        <div className="flex items-center gap-2 mb-3">
-          <FilePenLine size={14} className="text-[#00d4ff]" />
-          <span className="text-white text-sm font-bold">비용 입력</span>
-          <span className="text-gray-500 text-xs">예산 입력, 실적 입력</span>
-        </div>
-        <div className="grid grid-cols-7 gap-2">
-          <input type="month" value={form.month} onChange={e => setForm({ ...form, month: e.target.value })} className={inputClass} />
-          <input value={form.item} onChange={e => setForm({ ...form, item: e.target.value })} placeholder="항목" className={`${inputClass} col-span-2`} />
-          <select value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} className={inputClass}>
-            <option>수선비</option>
-            <option>소모품비</option>
-            <option>지급수수료</option>
-          </select>
-          <input value={form.budget} onChange={e => setForm({ ...form, budget: e.target.value })} placeholder="예산" type="number" className={inputClass} />
-          <input value={form.actual} onChange={e => setForm({ ...form, actual: e.target.value })} placeholder="실적" type="number" className={inputClass} />
-          <button onClick={addRow} className="bg-[#00d4ff] text-[#07111e] rounded-lg text-xs font-bold hover:bg-[#00b8d9]">등록</button>
-        </div>
-      </div>
+      {mode === 'input' && (
+        <>
+          <div className="pn">
+            <div className="ph">
+              <span style={{ color: 'var(--t1)', fontSize: '13px', fontWeight: 600 }}>비용 입력</span>
+              <span style={{ color: 'var(--t3)', fontSize: '11px' }}>예산 및 실적 등록</span>
+            </div>
+            <div style={{ padding: '13px' }}>
+              <div className="grid grid-cols-7 gap-2">
+                <input type="month" value={form.month} onChange={e => setForm(f => ({ ...f, month: e.target.value }))} className={inp} />
+                <input value={form.item} onChange={e => setForm(f => ({ ...f, item: e.target.value }))} placeholder="항목명" className={`${inp} col-span-2`} />
+                <select value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))} className={inp}>
+                  <option>수선비</option><option>소모품비</option><option>지급수수료</option>
+                </select>
+                <input value={form.budget} onChange={e => setForm(f => ({ ...f, budget: e.target.value }))} placeholder="예산(원)" type="number" className={inp} />
+                <input value={form.actual} onChange={e => setForm(f => ({ ...f, actual: e.target.value }))} placeholder="실적(원)" type="number" className={inp} />
+                <button onClick={addRow} style={{ background: 'var(--cy)', color: 'var(--bg)', borderRadius: '7px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', border: 'none' }}>등록</button>
+              </div>
+            </div>
+          </div>
+          <div className="pn" style={{ overflow: 'hidden' }}>
+            <div className="ph">
+              <span style={{ color: 'var(--t1)', fontSize: '13px', fontWeight: 600 }}>입력 내역</span>
+              {monthSelector}
+            </div>
+            {loadStatus === 'loading' ? loadingEl : loadStatus === 'error' ? errorEl : dataTable}
+          </div>
+        </>
+      )}
 
-      <div className="grid grid-cols-3 gap-4">
-        <div className="col-span-2 bg-[#0f2940] border border-[#1e3a5f] rounded-xl p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <ChartNoAxesCombined size={14} className="text-[#00d4ff]" />
-            <span className="text-white text-sm font-bold">비용 조회</span>
-            <span className="text-gray-500 text-xs">예산/실적 조회, Trend</span>
+      {mode === 'view' && (
+        <div className="pn">
+          <div className="ph">
+            <span style={{ color: 'var(--t1)', fontSize: '13px', fontWeight: 600 }}>비용 조회</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              {monthSelector}
+              <span style={{ color: 'var(--t3)', fontSize: '11px' }}>예산/실적 추이 및 목록</span>
+            </div>
           </div>
-          <div className="h-56">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={trend}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#1e3a5f" vertical={false} />
-                <XAxis dataKey="month" stroke="#374151" tick={{ fill: '#9ca3af', fontSize: 9 }} />
-                <YAxis stroke="#374151" tick={{ fill: '#9ca3af', fontSize: 9 }} />
-                <Tooltip contentStyle={{ backgroundColor: '#0a1929', border: '1px solid #1e3a5f', borderRadius: 8, color: '#fff', fontSize: 11 }} />
-                <Line dataKey="budget" name="예산(백만원)" stroke="#00d4ff" strokeWidth={2} />
-                <Line dataKey="actual" name="실적(백만원)" stroke="#00ff88" strokeWidth={2} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
+          {loadStatus === 'loading' ? loadingEl : loadStatus === 'error' ? errorEl : (
+            <div style={{ padding: '13px' }}>
+              <div style={{ height: '240px', marginBottom: '16px' }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={trend}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#1e3a5f" vertical={false} />
+                    <XAxis dataKey="month" stroke="#374151" tick={{ fill: '#9ca3af', fontSize: 9 }} />
+                    <YAxis stroke="#374151" tick={{ fill: '#9ca3af', fontSize: 9 }} unit="M" />
+                    <Tooltip contentStyle={{ backgroundColor: '#0a1929', border: '1px solid #1e3a5f', borderRadius: 8, color: '#fff', fontSize: 11 }} formatter={(v: number) => [v + '백만원']} />
+                    <Line dataKey="budget" name="예산" stroke="#00d4ff" strokeWidth={2} dot={{ r: 3, fill: '#00d4ff' }} />
+                    <Line dataKey="actual" name="실적" stroke="#00e5a0" strokeWidth={2} dot={{ r: 3, fill: '#00e5a0' }} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+              {dataTable}
+            </div>
+          )}
         </div>
+      )}
 
-        <div className="bg-[#0f2940] border border-[#1e3a5f] rounded-xl p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <Search size={14} className="text-[#ffa500]" />
-            <span className="text-white text-sm font-bold">비용 분석</span>
-          </div>
-          <div className="h-40">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={trend}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#1e3a5f" vertical={false} />
-                <XAxis dataKey="month" stroke="#374151" tick={{ fill: '#9ca3af', fontSize: 9 }} />
-                <YAxis stroke="#374151" tick={{ fill: '#9ca3af', fontSize: 9 }} />
-                <Tooltip contentStyle={{ backgroundColor: '#0a1929', border: '1px solid #1e3a5f', borderRadius: 8, color: '#fff', fontSize: 11 }} />
-                <Bar dataKey="variance" name="증감(백만원)" fill="#ffa500" radius={[3, 3, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-          <div className="space-y-2 mt-3">
-            {filtered.map(r => {
-              const rate = r.budget ? (r.actual / r.budget) * 100 : 0;
-              return (
-                <div key={`${r.month}-${r.item}`} className="bg-[#07111e] border border-[#1e3a5f] rounded-lg p-2">
-                  <div className="flex justify-between text-xs mb-1">
-                    <span className="text-gray-300 truncate">{r.item}</span>
-                    <span className={rate > 100 ? 'text-[#ff4444]' : 'text-[#00ff88]'}>{rate.toFixed(1)}%</span>
-                  </div>
-                  <div className="h-1.5 bg-[#0a1929] rounded-full overflow-hidden">
-                    <div className="h-full rounded-full" style={{ width: `${Math.min(rate, 100)}%`, backgroundColor: rate > 100 ? '#ff4444' : '#00d4ff' }} />
-                  </div>
+      {mode === 'analysis' && (
+        <div className="grid grid-cols-2 gap-4">
+          <div className="pn">
+            <div className="ph">
+              <span style={{ color: 'var(--t1)', fontSize: '13px', fontWeight: 600 }}>비용 분석</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                {monthSelector}
+                <span style={{ color: 'var(--t3)', fontSize: '11px' }}>예산 대비 실적 증감</span>
+              </div>
+            </div>
+            {loadStatus === 'loading' ? loadingEl : loadStatus === 'error' ? errorEl : (
+              <div style={{ padding: '13px' }}>
+                <div style={{ height: '240px' }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={trend}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#1e3a5f" vertical={false} />
+                      <XAxis dataKey="month" stroke="#374151" tick={{ fill: '#9ca3af', fontSize: 9 }} />
+                      <YAxis stroke="#374151" tick={{ fill: '#9ca3af', fontSize: 9 }} unit="M" />
+                      <Tooltip contentStyle={{ backgroundColor: '#0a1929', border: '1px solid #1e3a5f', borderRadius: 8, color: '#fff', fontSize: 11 }} formatter={(v: number) => [v + '백만원']} />
+                      <Bar dataKey="variance" name="증감" fill="#ffa500" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
                 </div>
-              );
-            })}
+              </div>
+            )}
+          </div>
+          <div className="pn">
+            <div className="ph">
+              <span style={{ color: 'var(--t1)', fontSize: '13px', fontWeight: 600 }}>항목별 집행률</span>
+            </div>
+            {loadStatus === 'loading' ? loadingEl : loadStatus === 'error' ? errorEl : (
+              <div style={{ padding: '13px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {rows.map(r => {
+                  const rate = r.budget ? (r.actual / r.budget) * 100 : 0;
+                  const rc = rate > 100 ? '#ff4757' : '#00d4ff';
+                  return (
+                    <div key={r.id} style={{ background: 'var(--bg4)', borderRadius: '8px', padding: '10px 12px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', marginBottom: '6px' }}>
+                        <span style={{ color: 'var(--t1)' }}>{r.item}</span>
+                        <span style={{ color: rate > 100 ? '#ff4757' : '#00e5a0', fontWeight: 700 }}>{rate.toFixed(1)}%</span>
+                      </div>
+                      <div style={{ height: '5px', background: 'var(--br)', borderRadius: '3px', overflow: 'hidden', marginBottom: '5px' }}>
+                        <div style={{ height: '100%', borderRadius: '3px', width: `${Math.min(rate, 100)}%`, backgroundColor: rc }} />
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'var(--t3)' }}>
+                        <span>예산 {money(r.budget)}</span>
+                        <span>실적 {money(r.actual)}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
-      </div>
-
-      <div className="bg-[#0f2940] border border-[#1e3a5f] rounded-xl overflow-hidden">
-        <table className="w-full text-xs">
-          <thead className="bg-[#0a1929] text-gray-500">
-            <tr>{['월', '항목', '구분', '예산', '실적', '증감', '담당'].map(h => <th key={h} className="px-3 py-2 text-left">{h}</th>)}</tr>
-          </thead>
-          <tbody className="divide-y divide-[#1e3a5f]">
-            {filtered.map(r => (
-              <tr key={`${r.month}-${r.item}`} className="hover:bg-[#0a1929]">
-                <td className="px-3 py-2 text-gray-300">{r.month}</td>
-                <td className="px-3 py-2 text-white">{r.item}</td>
-                <td className="px-3 py-2 text-[#00d4ff]">{r.category}</td>
-                <td className="px-3 py-2 text-gray-300">{money(r.budget)}</td>
-                <td className="px-3 py-2 text-gray-300">{money(r.actual)}</td>
-                <td className={`px-3 py-2 ${(r.actual - r.budget) > 0 ? 'text-[#ff4444]' : 'text-[#00ff88]'}`}>{money(r.actual - r.budget)}</td>
-                <td className="px-3 py-2 text-gray-400">{r.owner}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      )}
     </div>
   );
 }

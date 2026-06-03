@@ -10,6 +10,15 @@ export interface DailyEntry {
   budget?: number;   // 일일 예산
 }
 
+export interface ChangeItem {
+  action:   'upsert' | 'delete';
+  util_key: UtilityKey;
+  factory:  FactoryKey;
+  date:     string;
+  value?:   number;
+  budget?:  number;
+}
+
 export interface EnergyState {
   entries: Record<UtilityKey, Record<FactoryKey, DailyEntry[]>>;
   budgets: Record<UtilityKey, number>;
@@ -33,6 +42,10 @@ export interface EnergyCtx extends EnergyState {
   importing:         boolean;
   /** 전공장 엑셀 파일을 DB로 가져오기 */
   triggerImport:     () => Promise<{ count: number; errors: string[] }>;
+  /** 변경사항을 DB + Excel 파일에 저장 후 DB 엔트리 갱신 */
+  saveEntriesToDb:   (changes: ChangeItem[]) => Promise<{ saved: number; deleted: number; excel_errors: string[] }>;
+  /** DB 데이터 강제 재로드 */
+  refreshDb:         () => Promise<void>;
 }
 
 // ── 상수 ──────────────────────────────────────────────────────────────
@@ -51,8 +64,18 @@ export const FACTORY_META: Record<FactoryKey, { name: string; color: string }> =
 };
 
 export const UTIL_KEYS: UtilityKey[]         = ['gas', 'steam', 'nitrogen', 'argon'];
-export const DISPLAY_UTIL_KEYS: UtilityKey[] = ['gas', 'nitrogen', 'argon'];   // 스팀 데이터 없을 때 임시 제외
+export const DISPLAY_UTIL_KEYS: UtilityKey[] = ['gas', 'nitrogen', 'argon'];
 export const FACTORY_KEYS: FactoryKey[]      = ['f1', 'f2', 'f3', 'fnew'];
+
+/** 월별 입력 유틸리티 (date = 'YYYY-MM' 형식) */
+export const MONTHLY_UTIL_KEYS: UtilityKey[] = ['steam'];
+export function isMonthly(uk: UtilityKey): boolean { return MONTHLY_UTIL_KEYS.includes(uk); }
+
+/** steam은 3공장만, 나머지는 전 공장 반환 */
+export function getAvailableFactories(uk: UtilityKey): FactoryKey[] {
+  if (uk === 'steam') return ['f3'];
+  return FACTORY_KEYS;
+}
 
 // ── 빈 항목 구조 ──────────────────────────────────────────────────────
 const EMPTY_ENTRIES = (): Record<UtilityKey, Record<FactoryKey, DailyEntry[]>> => ({
@@ -106,12 +129,13 @@ function makeSeedEntries(): Record<UtilityKey, Record<FactoryKey, DailyEntry[]>>
 }
 
 const DEFAULT_STATE: EnergyState = {
-  entries: makeSeedEntries(),
+  entries: EMPTY_ENTRIES(),
   budgets: { gas: 1400000, steam: 1000000, nitrogen: 680000, argon: 340000 },
 };
 
 // ── localStorage 영속화 ──────────────────────────────────────────────
-const STORAGE_KEY = 'mdd_energy_v2';
+// v3: 더미 시드 데이터 제거 — 실제 Excel/DB 데이터만 표시
+const STORAGE_KEY = 'mdd_energy_v3';
 
 function loadState(): EnergyState {
   try {
@@ -202,6 +226,17 @@ export function EnergyProvider({ children }: { children: ReactNode }) {
     }
   }, [fetchDbEntries]);
 
+  const saveEntriesToDb = useCallback(async (changes: ChangeItem[]) => {
+    const r = await fetch('/api/energy/entries/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ changes }),
+    });
+    const json = await r.json();
+    await fetchDbEntries();
+    return json as { saved: number; deleted: number; excel_errors: string[] };
+  }, [fetchDbEntries]);
+
   const persist = useCallback((next: EnergyState) => {
     setState(next);
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); } catch { /* ignore */ }
@@ -230,12 +265,12 @@ export function EnergyProvider({ children }: { children: ReactNode }) {
     persist({ ...state, budgets: { ...state.budgets, [key]: value } });
   }, [state, persist]);
 
-  // 우선순위: DB > 파일 > 수동(seed)
+  // 우선순위: DB > 파일 (더미 seed 없음 — 실데이터만 표시)
   const getFactoryEntries = useCallback((key: UtilityKey, factory: FactoryKey): DailyEntry[] => {
     if (dbEntries[key][factory].length > 0)   return dbEntries[key][factory];
     if (fileEntries[key][factory].length > 0) return fileEntries[key][factory];
-    return state.entries[key][factory];
-  }, [dbEntries, fileEntries, state.entries]);
+    return [];
+  }, [dbEntries, fileEntries]);
 
   // 특정 연월의 예산 합계: DB budget 필드 합산, 없으면 수동 예산 반환
   const getMonthlyBudget = useCallback((key: UtilityKey, ym: string): number => {
@@ -252,16 +287,20 @@ export function EnergyProvider({ children }: { children: ReactNode }) {
     const pick = (fk: FactoryKey) =>
       dbEntries[key][fk].length > 0   ? dbEntries[key][fk] :
       fileEntries[key][fk].length > 0 ? fileEntries[key][fk] :
-      state.entries[key][fk];
+      [];
     return combinedEntries({ f1: pick('f1'), f2: pick('f2'), f3: pick('f3'), fnew: pick('fnew') });
-  }, [dbEntries, fileEntries, state.entries]);
+  }, [dbEntries, fileEntries]);
+
+  const refreshDb = useCallback(async () => {
+    await fetchDbEntries();
+  }, [fetchDbEntries]);
 
   return (
     <EnergyContext.Provider value={{
       ...state,
       upsertEntry, deleteEntry, setBudget,
       combined, getFactoryEntries, getMonthlyBudget,
-      fileLoaded, dbLoaded, importing, triggerImport,
+      fileLoaded, dbLoaded, importing, triggerImport, saveEntriesToDb, refreshDb,
     }}>
       {children}
     </EnergyContext.Provider>
